@@ -1,0 +1,1359 @@
+---
+title: "Researcher Training and Development Sessions for 2025"
+subtitle: "Joint Report from RDS & OGR Teams"
+#author: "Jen Beaudry"
+#date: "06/02/2026"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+header-includes:
+  - \usepackage{caption}
+  - \usepackage{titling}
+    \setlength{\droptitle}{-2cm} # removes some of the white space above title
+  - \pretitle{\begin{center}
+    \includegraphics[width=1.5in, height=0.5in]{flinders-university-horizontal-master.png}\LARGE\\} # adds logo
+  - \posttitle{\end{center}}
+  - \usepackage{fancyhdr}
+  - \fancypagestyle{plain}{\pagestyle{fancy}} # sets the footer on page 1
+  - \pagestyle{fancy} # sets the footer on page 2 and beyond
+  - \fancyhf{} # clears existing header & footer
+  - \renewcommand{\headrulewidth}{0pt} # removes the line from the header
+  - \fancyfoot[L]{Researcher Training and Development 2025} # report name in footer
+  - \fancyfoot[R]{\thepage} # page number in foooter
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE,
+                      include = FALSE, 
+                      eval = TRUE)
+
+```
+
+```{r library, eval=TRUE}
+
+# Function to load or install packages
+load_or_install <- function(packages) {
+  for (package in packages) {
+    if (!require(package, character.only = TRUE)) {
+      install.packages(package, dependencies = TRUE)
+      library(package, character.only = TRUE)
+    }
+  }
+}
+
+# Required packages 
+packages <- c("here"
+              , "tidyverse"
+              , "kableExtra"
+              , "readxl"
+              , "janitor"
+              , "rmarkdown"
+              , "ggrepel" #for annotations in ggplot
+              , "captioner"
+              )
+
+# Load or install the packages
+load_or_install(packages)
+
+# if you need captioner
+# install.packages("devtools")
+# devtools::install_github("adletaw/captioner")
+
+```
+
+```{r functions}
+
+styler_pdf <- function(dat) {
+  dat %>%
+     kable_styling(full_width = F, 
+                latex_options = c("striped", "HOLD_position"))
+}
+
+table_nums <- captioner(prefix = "Table")
+fig_nums <- captioner(prefix = "Figure")
+
+```
+
+<!--  This reruns the cleaning script so we don't have to run that separately when we update the data. 
+  I think. Check that this works! It might only happen when we knit the file.-->
+
+```{r child = here::here("analysis", "0_cleaning_2025_training_data.Rmd"), include=FALSE, eval=FALSE}
+
+```
+
+```{r load all training data}
+
+# load data from the five files: each source separately and then the join files
+
+# HDR data
+
+df_hdr <- read_csv(here::here("data", "processed", "hdr_processed.csv"), lazy = FALSE) 
+
+# ienrol RTDC data
+df_ienrol <- read_csv(here::here("data", "processed", "ienrol_processed.csv"), lazy = FALSE)
+
+# spreadsheet RTDC data
+df_sp <- read_csv(here::here("data", "processed", "spreadsheet_processed.csv"), lazy = FALSE)
+
+# joint ienrol RTDC data + HDR data
+df_ienrol_hdr <- read_csv(here::here("data", "processed", "joined_ienrol_hdr_processed.csv"), lazy = FALSE)
+
+# joint spreadsheet RTDC data + collapsed HDR data
+df_sp_hdr <- read_csv(here::here("data", "processed", "joined_spreadsheet_hdr_processed.csv"), lazy = FALSE)
+
+
+# we also need to bring in the youtube views; see the spreadsheet in the youtube analytics folder
+youtube <- "1106"
+
+```
+
+```{r convert to factors}
+
+# turn them into factors because the formatting isn't saved in csv files
+
+cols <- c("event_num",
+          "course_name",
+             "portfolio",
+          "attendance_status",
+          "role", 
+          "modality",
+          "training_category",
+          "data_source", 
+          "theme", 
+          "team")
+
+df_hdr <- df_hdr %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.)))
+
+cols <- c("event_num",
+          "course_name",
+             "portfolio",
+          "attendance_status",
+          "role", 
+          "department",
+          "modality",
+          "data_source", 
+          "team")
+
+df_ienrol <- df_ienrol %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.)))
+
+cols <- c("event",
+          "course_name",
+          "modality",
+          "data_source", 
+          "theme", 
+          "team")
+
+df_sp <- df_sp %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.)))
+
+cols <- c("event_num",
+          "course_name",
+             "portfolio",
+          "attendance_status",
+          "role", 
+          "department",
+          "modality",
+          "training_category",
+          "data_source", 
+          "theme", 
+          "team")
+
+df_ienrol_hdr <- df_ienrol_hdr %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.)))
+
+cols <- c("event",
+          "course_name",
+          "modality",
+          "data_source", 
+          "event_num",
+          "theme", 
+          "team")
+
+df_sp_hdr <- df_sp_hdr %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.)))
+
+```
+
+```{r summary stats hdr data}
+# [breadcrumb: think about whether I need all these summary stats for just the HDR stuff, 
+  # or if I can just filter the joined dfs later]
+
+# separate the data based on whether we are counting all synchronous and asynchronous, 
+  # but removes training offered by  external providers vs only synchronous 
+  # vs only asynchronous vs training by other providers []
+
+df_att_hdr <- df_hdr %>% 
+ filter(attendance_status == "Attended")
+
+df_all_hdr <- df_hdr %>% 
+ filter(attendance_status == "Attended", 
+        training_category != "other") 
+
+df_sync_hdr <- df_hdr %>% 
+ filter(attendance_status == "Attended", 
+       modality == "synchronous") # 
+
+df_async_hdr <- df_hdr %>% 
+ filter(attendance_status == "Attended", 
+       modality == "asynchronous", 
+      training_category != "other")
+
+df_other_hdr <- df_hdr %>% 
+  filter(training_category == "other")
+
+# manually confirm that the attendance values all sum to 0 so we know we aren't missing anything
+   # number of sync vs async vs other
+
+# (nrow(df_att_hdr) - nrow(df_sync_hdr) - nrow(df_async_hdr) - nrow(df_other_hdr))
+
+# calculate number of courses from the hdr data; 
+  # counts all synchronous and asynchronous, but removes training offered by 
+  # external providers
+
+n_courses_all_hdr <- df_all_hdr %>% 
+  count(course_name, event_num)
+
+# just sync sessions
+
+n_courses_sync_hdr <- df_sync_hdr %>% 
+  count(course_name, event_num)
+
+# just async sessions
+
+n_courses_async_hdr <- df_async_hdr %>% 
+  count(course_name, event_num)
+
+# calculate number of attendees for all sessions, except the other training
+
+n_attendees_all_hdr <- df_all_hdr %>%
+  count(fan, course_name, event_num)
+
+n_attendees_sync_hdr <- df_sync_hdr %>%
+  count(fan, course_name, event_num)
+
+n_attendees_async_hdr <- df_async_hdr %>%
+  count(fan, course_name, event_num)
+
+# unique attendees -- all
+n_unique_attendees_all_hdr <- n_distinct(n_attendees_all_hdr$fan)
+
+# unique attendees -- synchronous
+n_unique_attendees_sync_hdr <- n_distinct(n_attendees_sync_hdr$fan)
+
+# unique attendees -- asynchronous
+n_unique_attendees_async_hdr <- n_distinct(n_attendees_async_hdr$fan)
+
+# all hdr attendees broken down by College
+
+df_portfolio_all_hdr <- df_all_hdr %>% 
+  count(portfolio) %>% 
+  arrange(-n)
+
+df_portfolio_sync_hdr <- df_sync_hdr %>% 
+  count(portfolio) %>% 
+  arrange(-n)
+
+df_portfolio_async_hdr <- df_async_hdr %>% 
+  count(portfolio) %>% 
+  arrange(-n)
+
+# Attendance status
+
+attended_all_hdr <- df_all_hdr # already filtered by attendance
+not_attended_hdr <- df_hdr %>% 
+  filter(attendance_status == "Did not attend", 
+                training_category != "other")
+
+attended_sync_hdr <- df_sync_hdr
+not_attended_sync_hdr <- df_hdr %>% 
+  filter(attendance_status == "Did not attend", 
+        modality == "synchronous")
+
+attended_async_hdr <- df_async_hdr 
+not_attended_async_hdr <- df_hdr %>% 
+    filter(attendance_status == "Did not attend", 
+        modality == "asynchronous")
+
+```
+
+```{r summary stats ienrol data}
+
+# we need to add the two extra courses that weren't counted in ienrol. It doesn't 
+  # matter for attendance, but we want the numbers of courses to be correct. 
+
+# we didn't include two courses (Mary's visits to the Colleges in iEnrol)
+missing_ienrol <- 2
+
+# calculate number of courses
+
+n_courses_rds_df <- df_ienrol %>% 
+  filter(attendance_status == "Attended") %>% 
+  count(course_name, event_num)
+
+n_courses_rds <- sum(nrow(n_courses_rds_df) + missing_ienrol)
+
+# calculate number of attendees
+  # this number will differ from the T&D spreadsheet because we have had attendees that are not in iEnrol
+
+n_attendees_ienrol <- df_ienrol %>%
+  filter(attendance_status == "Attended") %>% 
+  count(fan, course_name, event_num)
+
+
+# unique attendees 
+n_unique_attendees_ienrol <- n_distinct(n_attendees_ienrol$fan)
+
+# all attendees broken down by College
+
+df_portfolios_ienrol <- df_ienrol %>% 
+  filter (portfolio == "Other portfolios") %>% 
+  count(department) %>% 
+  arrange(-n)
+
+n_portfolios_ienrol <- unique(df_portfolios_ienrol$department)
+
+# Attendance status
+
+attended_ienrol <- df_ienrol %>% filter(attendance_status == "Attended")
+not_attended_ienrol <- df_ienrol %>% filter(attendance_status == "Did not attend")
+
+```
+
+```{r summary stats spreadsheet data}
+
+# number of attendees 
+  # this number will differ from the ienrol data because we have had attendees that are not in iEnrol
+n_attended_sp <- sum(df_sp$attended)
+
+# figure out how many sessions were held face-to-face vs. online & how many folks attended in person or online for hybrid events
+n_event_sp <- df_sp %>% 
+  filter(event == "E")
+
+```
+
+```{r summary stats ienrol and HDR data}
+
+# separate the data based on whether we are counting all synchronous and asynchronous, 
+  # but removes training offered by  external providers vs only synchronous 
+  # vs only asynchronous
+
+df_all_ienrol_hdr <- df_ienrol_hdr %>% 
+ filter(attendance_status == "Attended", 
+        training_category != "other") 
+
+df_sync_ienrol_hdr <- df_ienrol_hdr %>% 
+   filter(attendance_status == "Attended", 
+       modality == "synchronous",
+       training_category != "other") 
+
+df_async_ienrol_hdr <- df_ienrol_hdr %>% 
+ filter(attendance_status == "Attended", 
+       modality == "asynchronous", 
+       training_category != "other") 
+
+# calculate number of courses
+
+n_courses_all_ienrol_hdr_df <- df_all_ienrol_hdr %>% 
+  count(course_name, event_num) 
+
+n_courses_all_ienrol_hdr <- sum(nrow(n_courses_all_ienrol_hdr_df) + missing_ienrol)
+
+n_courses_sync_ienrol_hdr_df <- df_sync_ienrol_hdr %>% 
+  count(course_name, event_num)
+
+n_courses_sync_ienrol_hdr <- sum(nrow(n_courses_sync_ienrol_hdr_df) + missing_ienrol)
+
+n_courses_async_ienrol_hdr <- df_async_ienrol_hdr %>% 
+  count(course_name, event_num)
+
+# calculate number of attendees
+  # this number will differ from the T&D spreadsheet because we have had attendees that are not in iEnrol
+
+n_attendees_all_ienrol_hdr <- df_all_ienrol_hdr %>% 
+  count(fan, course_name, event_num)
+
+n_attendees_sync_ienrol_hdr <- df_sync_ienrol_hdr %>%
+  count(fan, course_name, event_num)
+
+n_attendees_async_ienrol_hdr <- df_async_ienrol_hdr %>%
+  count(fan, course_name, event_num)
+
+# unique attendees 
+n_unique_attendees_all_ienrol_hdr <- n_distinct(n_attendees_all_ienrol_hdr$fan)
+n_unique_attendees_sync_ienrol_hdr <- n_distinct(n_attendees_sync_ienrol_hdr$fan)
+n_unique_attendees_async_ienrol_hdr <- n_distinct(n_attendees_async_ienrol_hdr$fan)
+
+# all attendees broken down by College, for all sessions
+
+df_portfolios_all_ienrol_hdr <- df_all_ienrol_hdr %>% 
+  filter (portfolio == "Other portfolios") %>% 
+  count(department) %>% 
+  arrange(-n)
+
+n_portfolios_all_ienrol_hdr <- unique(df_portfolios_all_ienrol_hdr$department)
+
+# Attendance status
+
+attended_all_ienrol_hdr <- df_all_ienrol_hdr # already filtered by attendance
+not_attended_all_ienrol_hdr <- df_ienrol_hdr %>% 
+  filter(attendance_status == "Did not attend", 
+                training_category != "other")
+
+attended_sync_ienrol_hdr <- df_sync_ienrol_hdr
+not_attended_sync_ienrol_hdr <- df_ienrol_hdr %>% 
+  filter(attendance_status == "Did not attend", 
+        modality == "synchronous")
+
+attended_async_ienrol_hdr <- df_async_ienrol_hdr 
+not_attended_async_ienrol_hdr <- df_ienrol_hdr %>% 
+    filter(attendance_status == "Did not attend", 
+        modality == "asynchronous")
+
+
+
+# Calculate the min, max and mean attendance stats
+attendance_summary <- df_sync_ienrol_hdr %>%
+  group_by(fan) %>%
+  summarise(sessions_attended = n(), .groups = "drop") %>%
+  summarise(
+    min_sessions = min(sessions_attended),
+    max_sessions = max(sessions_attended),
+    mean_sessions = mean(sessions_attended)
+  )
+
+# Calculate how many sessions people attended
+
+attendance_times <- df_sync_ienrol_hdr %>%
+  group_by(fan) %>%
+  summarise(sessions_attended = n(), .groups = "drop") %>% 
+  count (sessions_attended, name = "number_of_people")
+  
+
+
+```
+
+
+```{r summary stats spreadsheet and HDR data}
+
+# separate the data based on whether we are counting all synchronous and asynchronous, 
+  # but removes training offered by  external providers vs only synchronous 
+  # vs only asynchronous
+
+df_all_sp_hdr <- df_sp_hdr %>% 
+ filter(training_category != "other") 
+
+df_sync_sp_hdr <- df_sp_hdr %>% 
+ filter(modality == "synchronous") 
+
+df_async_sp_hdr <- df_sp_hdr %>% 
+ filter(modality == "asynchronous") 
+
+
+# number of attendees 
+  # this number will differ from the T&D spreadsheet because we have had attendees that are not in iEnrol
+n_attended_all_sp_hdr <- sum(df_all_sp_hdr$attended) 
+
+n_attended_sync_sp_hdr <- sum(df_sync_sp_hdr$attended) 
+
+n_attended_async_sp_hdr <- sum(df_async_sp_hdr$attended) 
+
+# I want to look at the distribution of attendees across teams, only for synchronous sessions
+attendees_sp_hdr <- df_sp_hdr %>% 
+    filter (modality == "synchronous") %>% 
+  select (team, attended)
+
+
+# figure out how many sessions were held face-to-face vs. online & how many folks attended in person or online for hybrid events
+  # [breadcrumb: we don't have this data for HDR data. Does Dani?]
+n_event_sp <- df_sp %>% 
+  filter(event == "E")
+
+
+```
+
+
+```{r captions, eval = TRUE}
+
+# use these to provide the captions and numbers for the figures 
+# use kable captions to provide the captions for the Tables, but use the captioner package
+  # to be able to reference the tables within the text
+
+fig_nums(name = "attendance_times", 
+         caption = "Distribution of the Number of Synchronous Sessions People Attended (2025)")
+
+fig_nums(name = "college_attendees", 
+         caption = "Number of Attendees in Synchronous Training & Development Sessions by College (2025)")
+
+fig_nums(name = "college_unique_attendees", 
+         caption = "Number of Unique Attendees in Synchronous Training & Development Sessions by College (2025)")
+
+fig_nums(name = "role_attendees", 
+         caption = "Number of Attendees in Synchronous Training & Development Sessions by Role (2025)")
+
+#fig_nums(name = "role_unique_attendees", 
+#         caption = "Number of Unique Attendees in Synchronous Training & Development Sessions (2025)")
+
+fig_nums(name = "attendee_distributions", 
+         caption = "Distribution of Synchronous Attendees by Team")
+
+table_nums(name = "theme_overview", 
+          caption = "Training and Development Summary for Synchronous Sessions (2025)")
+
+table_nums(name = "sessions_by_theme", 
+          caption = "Training and Development Sessions by Theme for Synchronous Sessions (2025)")
+
+table_nums(name = "async_theme_overview", 
+          caption = "Training and Development Summary for Asynchronous Modules (2025)")
+
+table_nums(name = "async_sessions_by_theme", 
+          caption = "Training and Development Asynchronous Modules by Theme (2025)")
+
+table_nums(name = "other_sessions", 
+          caption = "Training and Development Sessions by Theme for Sessions Offered Outside Flinders (2025)")
+
+```
+
+## Summary of Researcher Development Activities
+
+In 2025, the two Researcher Development teams (i.e., Researcher Training, 
+Development and Communication team in Research Development and Support [RDS], and 
+the HDR Development team in the Office of Graduate Research [OGR]) have offered 
+**`r n_courses_all_ienrol_hdr` information sessions and development workshops** 
+to researchers, research support staff, HDR supervisors and HDR students at Flinders
+University. 
+
+From the Flinders community, `r nrow(n_attendees_all_ienrol_hdr)` people have 
+engaged with our research training and development activities in 2025, 
+demonstrating exceptional engagement with our program. It is difficult 
+to determine the exact proportion of the research-related population that 
+engaged with our training and development activities due to issues with 
+accessing institutional data; however, we will work to provide this in 2026. 
+
+Our actual engagement numbers exceed the number of Flinders attendees 
+because we allowed external people to join select sessions (e.g., Open Research sessions, 
+the inaugural NAIDOC Indigenous Research Showcase, etc.). As such,
+a total of **`r sum(df_all_sp_hdr$attended)` people** engaged 
+with our offerings. Of the 
+`r nrow(n_attendees_all_ienrol_hdr)` people from Flinders who engaged, 
+`r n_unique_attendees_all_ienrol_hdr` were unique participants.
+
+
+These reported numbers reflect engagement in our synchronous sessions 
+(*n* = `r n_courses_sync_ienrol_hdr`; 
+e.g., in-person, 'live' online, and hybrid sessions) and 
+asynchronous online modules (*n* = `r nrow(n_courses_async_ienrol_hdr)`) that HDR 
+students and supervisors could complete any time. 
+
+This reported number of asynchronous sessions does not fully capture the
+breadth of our asynchronous offerings or the depth of the engagement with our 
+material for two reasons. First, HDR student engagement in online modules 
+beyond the online induction module is not captured in this report due to 
+limitations in system reporting. Second,
+the Researcher Development YouTube page (accessible from 
+our [Recordings page](https://staff.flinders.edu.au/research/session-recordings)) 
+indicates that recordings of our sessions have been accessed `r youtube` times. 
+We do not include this number of views in our overall statistics because 
+we have no way of knowing if people watched the videos in full. 
+
+
+Most of our participants engaged with 
+synchronous sessions (*n* = `r sum(df_sync_sp_hdr$attended)`; 
+`r round(sum(df_sync_sp_hdr$attended)/sum(df_all_sp_hdr$attended)*100, 0)`%), 
+while `r round(sum(df_async_sp_hdr$attended)/sum(df_all_sp_hdr$attended)*100, 0)`%
+ (*n* = `r sum(df_async_sp_hdr$attended)`) engaged with the asynchronous modules.
+This mix of delivery modes responds, and caters to, the needs of our diverse research
+community across locations and organisational units (including external participants).
+
+
+The mean number of attendees at 
+our synchronous sessions was `r round(mean(n_courses_sync_ienrol_hdr_df$n),0)` with a median of 
+`r round(median(n_courses_sync_ienrol_hdr_df$n),0)`. On average, participants 
+attended `r round(attendance_summary$mean_sessions,2)` 
+synchronous sessions; the number of sessions attended ranged from `r attendance_summary$min_sessions` to 
+`r attendance_summary$max_sessions`. As illustrated in `r fig_nums(name = "attendance_times", display = "cite")`, 
+the distribution of the number of sessions attended is positively skewed.
+The number of 'repeat customers' speaks to the quality of the sessions on offer. 
+
+In this report, we first break down our enrolments by College and Portfolio. We
+then explore the topics of our sessions and modules in more detail. First we 
+report the data for the synchronous sessions and then for the asynchronous modules. 
+For each, we provide an overview of the number of activities and number of attendees 
+by theme, and then report the number of attendees in each activity organised by theme.
+
+\newpage
+
+`r fig_nums(name = "attendance_times")`
+
+
+```{r plot the attendance distribution, include = TRUE, eval=TRUE, fig.width = 15, fig.height = 9}
+
+
+attendance_times %>%
+  ggplot(aes(x = sessions_attended, y = number_of_people)) +
+    geom_col(fill = "#90b8da", color = "black") +
+  geom_text(aes(label = number_of_people), vjust = -0.5) +
+  labs(x = "Sessions Attended",
+       y = "Frequency") +
+  theme_classic() +
+    theme(
+    title = element_text(size = 14, family="sans"),
+    legend.text = element_text(size = 14, family="sans"),
+    axis.text = element_text(size = 14, family ="sans"),
+    axis.title = element_text(size = 14, family = "sans")
+    )
+
+
+
+```
+
+
+
+## Number of Attendees by College and Portfolio in Synchronous Sessions
+
+`r fig_nums(name = "college_attendees", display = "cite")` illustrates how many 
+people attended these sessions across the Colleges and Portfolios. By far, the 
+largest number of attendees were in the College of Medicine and Public Health, 
+which is representative of the large number of researchers in that College.
+
+Most of the professional staff who attended our training and development sessions 
+were from the Portfolio of the Deputy Vice-Chancellor (Research). We collapsed all
+other portfolios in the University into a single "Other portfolios" category
+because of the large number of portfolios that our attendees represent
+(including Library; Learning and Teaching Innovation; Information and Digital Services; 
+Chief of Staff Portfolio; and Governance, Legal and Risk; as well as people who are not
+aligned with any portfolio in the iEnrol system).
+
+In terms of attendance rate, we calculated the proportion of people who attended 
+out of those who registered for the sessions. Overall, across all Colleges and Portfolios, 
+the average attendance rate for
+2025 was `r round(((nrow(attended_sync_ienrol_hdr)/(nrow(attended_sync_ienrol_hdr) + nrow(not_attended_sync_ienrol_hdr)))*100), 0)`%. 
+
+`r fig_nums(name = "college_unique_attendees", display = "cite")` illustrates the unique
+number of attendees across the Colleges and Portfolios. The College of Medicine
+and Public Health also had the most unique attendees. 
+
+The patterns of the data in `r fig_nums(name = "college_attendees", display = "cite")` 
+and `r fig_nums(name = "college_unique_attendees", display = "cite")` broadly reflect the sizes of the 
+Colleges. 
+
+\newpage
+
+`r fig_nums(name = "college_attendees")`
+
+```{r plot the ienrol attendance, include = TRUE, eval=TRUE, fig.width = 15, fig.height = 9}
+
+# count attendees rate per portfolio
+df_attend <- df_sync_ienrol_hdr %>%
+  filter(attendance_status == "Attended") %>%
+  count(portfolio)
+
+# need to note the threshold for the labels so only the smaller ones are repelled.
+threshold <- 50
+
+# plot it [this has attendance numbers by the portfolios]
+ggplot(df_attend, aes(
+  x = reorder(portfolio, n),
+  y = n
+)) +
+  geom_bar(stat = "identity", colour = "black", fill = "#90b8da") +
+  geom_text(aes(y = n,
+                x = portfolio,
+            label = ifelse(n>threshold, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 6) +
+    geom_text_repel(aes(label = ifelse(n<threshold, n, "")), 
+                  box.padding = 0.25,
+                  size = 6, 
+                  nudge_y = 0.5
+                  ) +
+  coord_flip() +
+  labs (#title = "Number of Attendees in Training & Development Sessions (2025)", # included in caption
+        x = NULL,
+        y = "Number of attendees") +
+  theme_classic() +
+  theme(
+    title = element_text(size = 14, family="sans"),
+    legend.text = element_text(size = 14, family="sans"),
+    axis.text = element_text(size = 14, family ="sans"),
+    axis.title = element_text(size = 14, family = "sans")
+    ) +
+  scale_fill_manual(
+    values = "#90b8da"
+  )
+ # scale_x_discrete(
+ #   labels = df_label$port_perc_label)
+
+
+ggsave(plot = last_plot(),filename = here::here("figures", "2025 attendance by portfolio.png"),
+       width = 15, height = 9, dpi = 300)
+
+```
+
+\vskip 0.3in
+
+`r fig_nums(name = "college_unique_attendees")`
+
+```{r plot the ienrol attendance for unique attendees, include = TRUE, eval=TRUE, fig.width = 15, fig.height = 9}
+
+# count unique attendees per portfolio
+df_attend_unique <- df_sync_ienrol_hdr %>%
+  filter(attendance_status == "Attended") %>%
+  distinct(fan, attendance_status, portfolio) %>%
+  count(portfolio)
+
+# need to note the threshold for the labels so only the smaller ones are repelled.
+threshold <- 50
+
+# plot it [this has unique attendance numbers by the portfolios]
+ggplot(df_attend_unique, aes(
+  x = reorder(portfolio, n),
+  y = n
+)) +
+  geom_bar(stat = "identity", colour = "black", fill = "#90b8da") +
+  geom_text(aes(y = n,
+                x = portfolio,
+            label = ifelse(n>threshold, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 6) +
+    geom_text_repel(aes(y = n,
+                      x = portfolio,
+                      label = ifelse(n<threshold, n, "")), 
+                  box.padding = 0.25,
+                  size = 6, 
+                  nudge_y = 0.5) +
+  coord_flip() +
+  labs (#title = "Number of Unique Attendees in Training & Development Sessions (2025)", # included in caption
+        x = NULL,
+        y = "Number of unique attendees") +
+  theme_classic() +
+  theme(
+    title = element_text(size = 14, family="sans"),
+    legend.text = element_text(size = 14, family="sans"),
+    axis.text = element_text(size = 14, family ="sans"),
+    axis.title = element_text(size = 14, family = "sans")
+    ) +
+  scale_fill_manual(
+    values = "#90b8da"
+  )
+ # scale_x_discrete(
+ #   labels = df_label$port_perc_label)
+
+
+ggsave(plot = last_plot(),filename = here::here("figures", "2025 unique attendance by portfolio.png"),
+       width = 15, height = 9, dpi = 300)
+
+```
+
+
+### Hybrid Events: In-person vs. online attendance
+
+As requested by an academic, the RDS development team has been tracking how many 
+people attend hybrid events online vs. in person. This allows us to better understand
+our research community's preference for online versus in-person events. 
+We do not have this information for the HDR events, so this analysis is based on 
+the RDS data only. 
+
+Of the `r n_courses_rds` sessions that RDS offered in 2025, `r nrow(n_event_sp)` 
+(`r round((nrow(n_event_sp))/n_courses_rds*100, 0)`%)
+were held face-to-face, with a hybrid option available whenever possible for those who 
+could not attend in person. Unfortunately, it was not possible to offer a hybrid 
+option for a few sessions, such as interactive workshops. We will continue to explore 
+how to connect with and support our Rural, Regional and Remote colleagues in the future. 
+
+When provided with a face-to-face option, the majority of participants attended 
+in person (*n* = `r sum(n_event_sp$attended_in_person)`; 
+`r round((sum(n_event_sp$attended_in_person))/sum(n_event_sp$attended)*100, 0)`%) 
+with a smaller proportion attending online (*n* = `r sum(n_event_sp$attended_online)`; 
+`r round((sum(n_event_sp$attended_online))/sum(n_event_sp$attended)*100, 0)`%). 
+Although it is likely that the Flinders' research community prefer to meet 
+face-to-face when possible, this in-person 
+preference might be inflated by our team's decision to require people to request an 
+online link for in-person sessions rather than providing it by default. We will
+continue to do this in 2026 so members of the research community have opportunities
+to expand their networks and to connect in-person. 
+
+
+
+## Number of Attendees According to their Role
+
+```{r sync attendance by role, eval=TRUE}
+
+# count attendees rate by role
+df_attend <- df_sync_ienrol_hdr %>%
+  filter(attendance_status == "Attended") %>% 
+  count(role)
+
+# count unique attendees per portfolio
+df_attend_unique_role <- df_sync_ienrol_hdr %>%
+  filter(attendance_status == "Attended") %>%
+  distinct(fan, attendance_status, role) %>%
+  count(role)
+
+```
+
+
+`r fig_nums(name = "role_attendees", display = "cite")` illustrates the
+number of attendees according to their role, as reported in the iEnrol system or 
+based on their attendance in HDR supervisor (coded as academics) or HDR student 
+training (coded as students).
+The majority of attendees were academic staff members
+(`r round(df_attend %>% filter(role=="Academic") %>% select(n)/sum(df_attend$n)*100 ,0)`%),
+followed by students 
+(`r round(df_attend %>% filter(role=="Student") %>% select(n)/sum(df_attend$n)*100 ,0)`%), and 
+professional staff members 
+(`r round(df_attend %>% filter(role=="Professional") %>% select(n)/sum(df_attend$n)*100 ,0)`%).
+
+An analysis of the unique attendees, indicates that the largest cohort of unique 
+attendees were academic staff members (*n* = `r df_attend_unique_role %>% filter(role=="Academic") %>% select(n)`).
+
+\vskip 0.3in
+
+`r fig_nums(name = "role_attendees")`
+
+```{r plot the sync attendance by role, include = TRUE, eval=TRUE, fig.width = 15, fig.height = 9}
+
+# count attendees rate by role
+df_attend <- df_sync_ienrol_hdr %>%
+  filter(attendance_status == "Attended") %>%
+  count(role)
+
+# need to note the threshold for the labels so only the smaller ones are repelled.
+threshold <- 50
+
+# plot it [this has attendance numbers by their role, as reported in ienrol]
+ggplot(df_attend, aes(
+  x = reorder(role, n),
+  y = n
+)) +
+  geom_bar(stat = "identity", colour = "black", fill = "#90b8da") +
+  geom_text(aes(y = n,
+                x = role,
+                label = ifelse(n>threshold, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 6) +
+  geom_text_repel(aes(y = n,
+                      x = role,
+                      label = ifelse(n<threshold, n, "")), 
+                  box.padding = 0.25,
+                  size = 6, 
+                  nudge_y = 0.5) +
+  coord_flip() +
+  labs (#title = "Number of Attendees in Training & Development Sessions (2025)", # included in caption
+        x = NULL,
+        y = "Number of attendees") +
+  theme_classic() +
+  theme(
+    title = element_text(size = 14, family="sans"),
+    legend.text = element_text(size = 14, family="sans"),
+    axis.text = element_text(size = 14, family ="sans"),
+    axis.title = element_text(size = 14, family = "sans")
+    ) +
+  scale_fill_manual(
+    values = "#90b8da"
+  )
+ # scale_x_discrete(
+ #   labels = df_label$port_perc_label)
+
+
+# ggsave(plot = last_plot(),filename = here::here("figures", "2025 attendance by role.png"),
+#        width = 15, height = 9, dpi = 300)
+
+```
+
+
+
+```{r plot the ienrol attendance for unique attendees by role, include = TRUE, eval=FALSE, fig.width = 15, fig.height = 9}
+
+# count unique attendees per portfolio
+df_attend_unique <- df_sync_ienrol_hdr %>%
+  filter(attendance_status == "Attended") %>%
+  distinct(fan, attendance_status, role) %>%
+  count(role)
+
+
+# plot it [this has unique attendance numbers by the portfolios]
+ggplot(df_attend_unique, aes(
+  x = reorder(role, n),
+  y = n
+)) +
+  geom_bar(stat = "identity", colour = "black", fill = "#90b8da") +
+  geom_text(aes(y = n,
+                x = role,
+                label = ifelse(n>threshold, n, "")),
+            position = position_stack(vjust = 0.5),
+            size = 6) +
+  geom_text_repel(aes(y = n,
+                      x = role,
+                      label = ifelse(n<threshold, n, "")), 
+                  box.padding = 0.25,
+                  size = 6) +
+  coord_flip() +
+  labs (#title = "Number of Unique Attendees in Training & Development Sessions (2025)", # included in caption
+        x = NULL,
+        y = "Number of unique attendees") +
+  theme_classic() +
+  theme(
+    title = element_text(size = 14, family="sans"),
+    legend.text = element_text(size = 14, family="sans"),
+    axis.text = element_text(size = 14, family ="sans"),
+    axis.title = element_text(size = 14, family = "sans")
+    ) +
+  scale_fill_manual(
+    values = "#90b8da"
+  )
+ # scale_x_discrete(
+ #   labels = df_label$port_perc_label)
+
+
+ggsave(plot = last_plot(),filename = here::here("figures", "2025 unique attendance by portfolio.png"),
+       width = 15, height = 9, dpi = 300)
+
+```
+
+
+
+\vskip 0.3in
+
+## Differences between activities by Research Development and Support and the Office of Graduate Research
+
+The two teams have historically worked independently serving different but overlapping
+cohorts, delivering specific training with different drivers for their activities. 
+Research Development and Support (RDS) primarily offers training and development 
+activities to support researchers and research support staff. 
+Given that RDS' activities are based on a 'value add' approach, they are typically
+driven by requests from the research community and by identified areas of need. The 
+Office of Graduate Research is primarily focused on ensuring that HDR supervisors meet 
+registration requirements, while supporting the development and timely completion of 
+HDR students. 
+
+### Delivery Modality: Synchronous vs. Asynchronous
+
+Most of the `r n_courses_all_ienrol_hdr` activities that we held were 
+offfered as synchronous sessions 
+(n = `r n_courses_sync_ienrol_hdr`) 
+whereas others (n = `r n_courses_async_ienrol_hdr %>% count()`) 
+were offered as asynchronous modules through the University Learning 
+Management System (Canvas). 
+
+This split in the modality of our sessions reflects the different approaches 
+used by the two teams; researcher offerings were almost exclusively synchronous 
+sessions, whereas HDR student and supervisor offerings were mostly asynchronous
+modules. The provision of asynchronous modules caters to the nature of Higher 
+Degrees by Research at Flinders, catering for students and supervisors start 
+dates and specific training needs at different times accordingly. There are also 
+a large proportion of off-campus and part-time HDR students, therefore 
+flexible asynchronous training options are important for this cohort.
+
+### Attendance Patterns and Numbers
+
+As shown in `r fig_nums(name = "attendee_distributions", display = "cite")`, the OGR
+team tends to have smaller synchronous sessions (i.e., between 0-10 attendees) whereas RDS
+has more spread across larger numbers (i.e., between 10-20 and 20-30). RDS has more
+sessions than OGR with between 50 and 100 attendees, with a few sessions that attract 
+more than 100 attendees. We are in the infancy of offering joint sessions, as reflected
+in the left-hand panel of the figure. 
+
+The RDS team offered `r n_courses_rds` synchronous information
+sessions and development workshops, with `r sum(df_sp$attended)`
+attendees at these sessions. The OGR team offered `r nrow(n_courses_sync_hdr)` 
+synchronous information sessions and development workshops, with `r nrow(df_sync_hdr)`
+attendees at these sessions. 
+
+\newpage
+
+`r fig_nums(name = "attendee_distributions")`
+
+```{r plot the sp attendance by team, include = TRUE, eval=TRUE, fig.width = 12, fig.height = 6}
+
+# Bin the 'attended' values into ranges of 10, just to double check the data [hide for now]
+# attendees_sp_hdr %>%
+#   mutate(attended_bin = cut(attended, breaks = seq(0, 175, by = 10), right = FALSE)) %>%
+#   count(team, attended_bin) %>%
+#   arrange(team, attended_bin)   
+
+attendees_sp_hdr$team <- factor(attendees_sp_hdr$team, levels = 
+                                  c("RDS", 
+                                    "OGR", 
+                                    "Joint"))
+  
+
+attendees_sp_hdr %>%
+  ggplot(aes(x = attended, fill = team)) +
+  geom_histogram(breaks = seq(0, 250, by = 10), alpha = 0.5, colour = "black") +
+  facet_wrap(~team) + 
+  xlab("Attendees (bins of 10)") +
+  ylab("Frequency") +
+  theme_classic() +
+  theme(axis.text = element_text(size = 12), 
+        axis.title = element_text(size = 12), 
+        strip.text = element_text(size = 14, face = "bold"),
+        legend.position = "none") 
+
+```
+
+
+## Overview of Research Training and Development Topics 
+
+Next, we explore the topics and modalities of the sessions in more detail. 
+
+We first report the synchronous sessions offered by RDS and OGR, then the 
+asynchronous modules offered by OGR to HDR students and supervisors.
+
+### Themes for Synchronous Training & Development Programs
+
+The numbers presented 
+in `r table_nums(name = "theme_overview", display = "cite")` and
+`r table_nums(name = "sessions_by_theme", display = "cite")`
+reflect the total number of attendees at the synchronous sessions
+(*n* = `r n_attended_sync_sp_hdr`), most of whom are from Flinders
+(*n* = `r nrow(n_attendees_sync_ienrol_hdr)`). 
+`r table_nums(name = "theme_overview", display = "cite")` shows the number
+of sessions and attendees by theme. 
+
+The HDR Development team does not use 'development themes' in the same way that the 
+RDS team does, so we have grouped their sessions  by audience only (HDR students
+vs. HDR supervisors). In future reports, our sessions will be categorized
+according to the Researcher Development Framework that is near completion. 
+
+The largest number of sessions offered from RDS
+was in the 'Research Funding' theme, demonstrating Flinders University's commitment
+to supporting and developing researchers so they can attract external research funding. 
+The fact that this theme also had the largest number of attendees is evidence that 
+the research community values these training and development opportunities. The 
+OGR team offered the most number of synchronous sessions to HDR students, including
+regular drop-in sessions. 
+
+\newpage
+
+```{r sync theme overview, include = TRUE, eval = TRUE}
+
+#combine sessions & attendees per theme
+theme_overview <- df_sync_sp_hdr %>%
+  group_by(theme) %>%
+  summarise(`Number of Sessions` = n(),
+            `Number of Attendees` = sum(attended)) %>%
+  arrange (desc(`Number of Attendees`)) %>%
+    adorn_totals("row")
+
+theme_overview <- theme_overview %>% 
+  mutate (theme = case_when(theme == "HDR students" ~ "HDR Students", 
+                            theme == "HDR supervisors" ~ "HDR Supervisors", 
+                            TRUE ~ theme))
+          
+# make it look good
+kable(theme_overview,
+      format = 'latex',
+      booktabs = T,
+      col.names = c("Theme", "Number of Sessions", "Number of Attendees"),
+      align = c('lcc'),
+      caption = "Training and Development Summary for Synchronous Sessions (2025)",
+      linesep = "") %>%
+  kable_styling(latex_options = c("hold_position", "striped"))
+
+```
+
+\vskip 0.3in
+
+`r table_nums(name = "sessions_by_theme", display = "cite")` provides
+additional detail about the modules that HDR students and supervisors completed.
+
+
+```{r sync sessions and attendees by theme collapse HDR data, include = FALSE, eval=TRUE}
+
+# cleaning up the HDR data so the courses are repeated so many times in the table
+
+# identify the courses with a lot of repeat sessions
+
+dup_courses <- c("3MT Workshop/Practice Sessions", 
+                "HDR Development Drop-in Sessions", 
+                "Thesis Writing Discussion Group", 
+                "HDR Supervisor Core Training Part 2 - Core Workshop")
+
+# summarise the data so the attendance is summed across sessions and the name indicate 
+  # the number of times it was run
+
+dup_data <- df_sync_sp_hdr %>% 
+  filter (course_name %in% dup_courses) %>% 
+  group_by(theme, team, course_name, modality, training_category) %>%
+  summarise(
+    times_run = n(),
+    attended = sum(attended),
+    .groups = "drop"
+  ) %>%
+  mutate(course_name = paste(course_name, "x", times_run, "sessions")) %>% 
+      select(-times_run)
+
+# separate out these multiple sessions out of the data set
+
+df_sync_sp_hdr_remove <- df_sync_sp_hdr %>% 
+    filter (!course_name %in% dup_courses)
+
+# join the remaining data set with the summary data
+
+df_sync_sp_hdr <- full_join(df_sync_sp_hdr_remove, dup_data)
+
+# now keep what we need
+
+theme_sessions <- df_sync_sp_hdr %>%
+  group_by(theme) %>%
+  select(c(theme, course_name, team, attended)) %>%
+  arrange(theme, course_name) %>%
+  mutate(theme = as.factor(theme))
+
+```
+
+
+```{r sync sessions and attendees by theme collapse HDR table, include = TRUE, eval=TRUE}
+
+# make it look good
+kable(theme_sessions [, 2:4],
+  booktabs = T,
+  linesep = "",
+  escape = F,
+  col.names = c("Sessions by Themes", "Team", "Number of Attendees"),
+  caption =
+    sprintf("Training and Development Synchronous Sessions for 2025 (n = %d)",
+            n_attended_sync_sp_hdr),
+  align = 'lcc',
+  longtable = T #break the table over multiple pages
+  ) %>%
+  column_spec(1, width = "4.3in") %>%
+  column_spec(2, width = "0.7in") %>%
+  column_spec(3, width = "1in") %>%
+  pack_rows (index = table(theme_sessions$theme),
+               latex_gap_space = "0.4em",) %>%
+    kable_styling(
+    full_width = F,
+    latex_options = c("repeat_header", "hold_position", "striped")
+  )
+
+```
+
+\vskip 0.3in
+
+## Asynchronous Training & Development Modules
+
+`r table_nums(name = "async_theme_overview", display = "cite")` shows the number
+of asynchronous modules and completions by theme. 
+
+Nearly all asynchronous activities were offered by OGR because they need to ensure
+they meet the needs of HDR students, including international and part-time students. 
+Unfortunately, due to difficulties within the system, we cannot provide data for
+student engagement with the online modules, with the exception of the HDR Induction modules. As 
+such, the current data suggests that HDR students and HDR supervisors (*n* = 
+`r sum(n_courses_async_hdr$n)`) have engaged with `r nrow(n_courses_async_hdr)`
+modules. 
+
+The RDS team has offered the Epigeum 'Research Integrity' modules to the 
+research community, but uptake has been limited thus far. As such, we have not 
+included the data in this report. In the future, we will make four of the 'Research
+Integrity' modules mandatory, when Flinders procures a Learning Management System 
+with that capability that is accessible by HDR students and academics with full academic
+status. 
+
+### Supervisor Development Program
+
+On top of the synchronous supervisor training sessions, the HDR Development team 
+manage a mandatory development program for HDR supervisors. The points-based 
+program consists of two core Flinders specific modules (one asynchronous and one 
+synchronous), a range of online modules and seminars offered through Canvas, and numerous 
+interactive workshops (reported in the previous table). All supervisors need to 
+complete the program before taking on new students (two core components and 30 points)
+and update their training by completing 15 points every two years. The purpose 
+of the program is to support supervisors in providing an education to their 
+students, encourage reflection and development, while promoting and addressing 
+national and institutional guidelines. Each online activity has a reflective 
+assignment, which the team review, provide feedback on and enter into the system 
+for program points. The table below shows the program completion by training type. 
+
+\vskip 0.3in
+
+```{r async theme overview, include = TRUE, eval = FALSE}
+
+#combine sessions & attendees per theme
+async_theme_overview <- df_async_sp_hdr %>%
+  group_by(theme) %>%
+  summarise(`Number of Sessions` = n(),
+            `Number of Attendees` = sum(attended)) %>%
+  arrange (desc(`Number of Attendees`)) %>%
+    adorn_totals("row")
+
+# make it look good
+kable(async_theme_overview,
+      booktabs = T,
+      col.names = c("Theme", "Number of Sessions", "Number of Attendees"),
+      align = c('lcc'),
+      caption = "Training and Development Summary for Asynchronous Modules (2025)",
+      linesep = "\\addlinespace") %>%
+  kable_styling(latex_options = c("hold_position", "striped"))
+
+```
+
+
+```{r async theme overview by category, include = TRUE, eval = TRUE}
+
+# clean up the data as per Dani's request
+
+# keep this but not using it.
+
+# df_async_hdr_category_1 <- df_async_sp_hdr %>%
+#   dplyr::mutate(training_category = str_remove(training_category, "^online\\s+")) %>% # remove online from name 
+#   dplyr::mutate(training_category = str_to_title(training_category)) %>% 
+#   dplyr::mutate (theme_category = case_when(theme == "HDR students" ~ as.factor(theme),
+#                                    TRUE ~ as.factor(training_category))) 
+
+df_async_hdr_category <- df_async_sp_hdr %>%
+  dplyr::mutate (theme_category = case_when(theme == "HDR students" ~ "HDR Students", 
+                                            training_category == "online core" ~ "HDR Supervisor Core", 
+                                            training_category == "online module" ~ "HDR Supervisor Modules",
+                                            training_category == "online workshop" ~ "HDR Supervisor Workshops",
+                                            training_category == "online seminar" ~ "HDR Supervisor Seminars")) %>% 
+  dplyr::mutate(theme_category = fct_relevel(theme_category, "HDR Students"))
+
+## now fix the order of the module numbers so the 10 doesn't come before 2.  
+  # this code extracts module number only when the course name starts with "Module X:"
+df_async_hdr_category <- df_async_hdr_category %>% 
+  mutate(module_n = str_match(as.character(course_name), "^Module\\s+(\\d+)\\s*:") [,2] %>% 
+           as.integer(), 
+ # then put module courses first, ordered by number; then non-module courses after
+         course_name = fct_reorder(
+           course_name, 
+           .x = if_else(is.na(module_n), Inf, module_n), 
+           .fun = identity
+         )
+  ) %>% 
+  select(-module_n)
+        
+            
+  
+#combine sessions & attendees per theme
+
+async_theme_overview <- df_async_hdr_category %>%
+  group_by(theme_category) %>%
+  summarise(`Number of Sessions` = n(),
+            `Number of Attendees` = sum(attended), 
+            .groups = "drop") %>%
+    adorn_totals("row") 
+
+# make it look good
+kable(async_theme_overview,
+      booktabs = T,
+      format = 'latex',
+      col.names = c("Theme", "Number of Modules", "Number of Completions"),
+      align = c('lcc'),
+      caption = "Summary of Asynchronous Modules for HDR Students and HDR Supervisors (2025)",
+      linesep = "") %>%
+  kable_styling(latex_options = c("hold_position", "striped"))
+
+```
+
+\vskip 0.3in
+
+`r table_nums(name = "async_sessions_by_theme", display = "cite")` provides
+additional detail about the specific sessions that we ran within each of the
+training and development themes.
+
+\vskip 0.3in
+
+```{r async sessions and attendees by theme, include = TRUE, eval = TRUE}
+
+
+# how many courses per theme
+async_theme_sessions <- df_async_hdr_category %>%
+  group_by(theme_category) %>%
+  select(c(theme_category, course_name, attended)) %>%
+  arrange(theme_category, course_name) %>%
+  mutate(theme_category = as.factor(theme_category))
+
+# drop the unused levels (all the RDS themes) -- don't need this bc using theme_category
+# async_theme_sessions$theme_category <- droplevels(async_theme_sessions$theme_category)
+
+
+# make it look good
+kable(async_theme_sessions [, 2:3],
+  booktabs = T,
+  linesep = "\\addlinespace",
+  col.names = c("Modules by Themes", "Number of Completions"),
+  caption =
+    sprintf("Asynchronous Modules for HDR Students and HDR Supervisors (n = %d)",
+            n_attended_async_sp_hdr),
+  align = 'lc',
+  longtable = T #break the table over multiple pages
+  ) %>%
+  column_spec(1, width = "5in") %>%
+  column_spec(2, width = "1in") %>%
+  pack_rows (index = table(async_theme_sessions$theme_category),
+               latex_gap_space = "0.4em",) %>%
+    kable_styling(
+    full_width = F,
+    latex_options = c("repeat_header", "hold_position", "striped")
+  )
+
+```
+
+
+
+```{r other sessions and attendees, include = TRUE, eval = FALSE}
+
+`r table_nums(name = "other_sessions", display = "cite")` provides
+additional detail about the specific sessions that HDR supervisors participated 
+in outside of the training and development programs offered by the OGR and RDS teams. 
+
+
+# how many courses and attendees
+other_sessions <- df_other_hdr %>%
+  count(course_name, name = "attended") %>% 
+  arrange(desc(attended))
+
+n_other_sessions <- sum(other_sessions$attended)
+
+# make it look good
+kable(other_sessions [, 1:2],
+  booktabs = T,
+  linesep = "\\addlinespace",
+  col.names = c("Session Names", "Number of Completions"),
+  caption =
+    sprintf("Other Training and Development Sessions HDR Supervisors Completed in 2025 (n = %d)",
+            n_other_sessions),
+  align = 'lc',
+  longtable = T #break the table over multiple pages
+  ) %>%
+  column_spec(1, width = "5in") %>%
+  column_spec(2, width = "1in") %>%
+    kable_styling(
+    full_width = F,
+    latex_options = c("repeat_header", "hold_position", "striped")
+  )
+
+```
+
+
+
+```{r unique sessions by theme, include = FALSE, eval=FALSE}
+
+# to answer P&C's question of how many unique courses we offer
+
+# how many sessions per theme -- just a quick and dirty report. Copy and paste into excel.
+
+print(unique(df_sp$course_name))
+
+```
+
+\vskip 0.3in
+
+If you have any questions or suggestions for additional training and development
+sessions for Researchers, HDR Students or HDR Supervisors, please contact 
+Dr Jen Beaudry (Manager, Researcher Training, Development and Communication) 
+in Research Development and Support, and Dr Dani Milos (HDR Education Coordinator) 
+in the Office of Graduate Research via researcher.development@flinders.edu.au.
+
+
+```{r code graveyard, eval = FALSE}
+
+
+
+```
+

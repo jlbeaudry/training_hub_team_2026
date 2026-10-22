@@ -1,0 +1,516 @@
+---
+title: "Researcher Development Report for 2026"
+subtitle: "Joint Report from RDS & OGR Teams (July 2026)"
+# subtitle: "Data script for Preprocessing the training data"
+#author: "Jen Beaudry"
+#date: "03/02/2026"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+
+# just a reminder that there is no output from this script. It just cleans the data.
+  # I have built it as a Rmd so we can run it as a child document, but I don't 
+  # actually know how to do that
+
+# turn it into an R script and try this code in a chunk
+# {r run-preprocessing, include = FALSE}
+# source(here::here("analysis", "0. cleaning_2025_training_data.R"))}
+
+knitr::opts_chunk$set(echo = FALSE,
+                      include = FALSE, 
+                      eval = TRUE)
+
+
+options(knitr.duplicate.label = "allow") # use this when you use the child files
+
+# team names -- I use these names interchangeably 
+  # RDS = RTDC
+  # OGR = HDR
+
+```
+
+
+```{r library}
+
+# Function to load or install packages
+load_or_install <- function(packages) {
+  for (package in packages) {
+    if (!require(package, character.only = TRUE)) {
+      install.packages(package, dependencies = TRUE)
+      library(package, character.only = TRUE)
+    }
+  }
+}
+
+# Required packages 
+packages <- c("here"
+              , "tidyverse"
+              , "readxl"
+              , "janitor"
+              , "rmarkdown"
+              )
+
+# Load or install the packages
+load_or_install(packages)
+
+rm(packages)
+
+# if you need captioner
+# install.packages("devtools")
+# devtools::install_github("adletaw/captioner")
+
+```
+
+```{r load all training data}
+
+# [breadcrumb: in the future, we could bring all HDR data cleaning into this script, 
+  # rather than load data that's already been coded]
+
+# load data from the RTDC training spreadsheet (this is the complete number of attendees
+  # & includes info about the theme)
+
+df_sp <- read_xlsx(
+  here::here("data",
+             "raw",
+             "2026_spreadsheet_data.xlsx"),
+  sheet = '2026 Program',
+  skip = 5, #start at the header row
+  n_max = 90,  # last session = VC awards
+  .name_repair = "unique",
+  trim_ws = TRUE) %>% 
+  clean_names()
+
+# load RTDC data from ienrol (this contains names of Flinders attendees & includes college/portfolio info)
+
+df_ienrol <- read_csv(here::here("data", "raw", "2026_ienrol_data.csv"), lazy = FALSE) %>% 
+  clean_names()
+
+# df_hdr <- read_csv(here::here("data", "HDR", "hdr_complete.csv"), lazy = FALSE) 
+
+```
+
+```{r RDS delete sessions that did not run, eval = FALSE}
+
+# delete the sessions that were scheduled but not run [will need to compare to our training spreadsheet]
+  # use the n_courses code in the next chunk to make it easy to figure out which sessions didn't run
+
+df_remove1 <- df_ienrol %>% 
+  filter(course_name == "ARC Discovery Projects EOI PItching Session for CHASS/CEPSW/CBGL" & event_num == "3")
+
+list_df <- list(df_ienrol, df_remove1)
+
+df_ienrol <- list_df %>%reduce(anti_join)
+
+rm(df_remove1, list_df)
+
+```
+
+```{r clean hdr data, eval = FALSE}
+
+df_hdr <- df_hdr %>% 
+  mutate (theme = case_when(role == "supervisor" ~ "HDR supervisors", 
+                            role == "student" ~ "HDR students")) %>% 
+  mutate (team = "OGR") %>% 
+  rename(first_name = forename,
+         last_name = surname) %>% 
+  mutate (role = case_when (role == "supervisor" ~ "Academic", 
+                                  role == "student" ~ "Student"))
+
+# clean up some of the messy course names & categorisation
+  # note: the counts of all vs sync vs async won't match if there are sync & a sync courses with the same name! 
+  # add a different event num so it's counted twice in the 'all' courses
+
+df_hdr <- df_hdr %>% 
+    mutate (training_category = case_when(course_name == "HDR Supervisor Core Training Part 2" ~ " seminar", 
+                                          course_name == "Delivery of Session: Dear New Postgrad" ~ "other",
+                                          course_name == "Delivery of Session - HDR Industry Engagement and Internships" ~ "other",
+                                          course_name == "Delivery of a Workshop" ~ "other",
+                                          TRUE ~ as.character(training_category))) %>% 
+   mutate (modality = case_when(course_name == "HDR Supervisor Core Training Part 2" ~ " synchronous",
+                                course_name == "Delivery of Session: Dear New Postgrad" ~ "other",
+                                 course_name == "Delivery of Session - HDR Industry Engagement and Internships" ~ "other",
+                                  course_name == "Delivery of Workshop" ~ "other",
+                                  TRUE ~ as.character(modality))) %>% 
+  mutate (course_name = case_when(course_name == "Extra Core Attendance" ~ "HDR Supervisor Core Training Part 2 - Core Workshop", 
+                                  course_name == "Extra Core attendance" ~ "HDR Supervisor Core Training Part 2 - Core Workshop",
+                                  course_name == "Extra Core completion" ~ "HDR Supervisor Core Training Part 2 - Core Workshop", 
+                                  course_name == "HDR Supervisor Core Training Part 2" ~ "HDR Supervisor Core Training Part 2 - Core Workshop", 
+                                  course_name == "Module 11: HDR Intellectual Property" ~ "Module 11: HDR Student Intellectual Property",
+                                  TRUE ~ as.character(course_name))) %>% 
+  mutate (event_num = case_when(course_name == "Seminar: Inclusive approaches to designing, conducting and supervising HDR research" 
+                                & modality == "asynchronous" ~ 2, 
+                                TRUE ~ event_num)) %>% 
+  mutate(course_name = str_remove(course_name, "^Seminar:\\s+")) %>% 
+  mutate(course_name = str_remove(course_name, "^Workshop:\\s+")) %>% 
+  mutate(course_name = str_remove(course_name, "^Epigeum\\s+"))
+
+
+# don't remove HDR supervision here because it messes with our removal of overlapping sessions! 
+
+  # df_async_hdr_category_1 <- df_async_sp_hdr %>%
+#   dplyr::mutate(training_category = str_remove(training_category, "^online\\s+")) %>% # remove online from name 
+
+
+# turn them into factors
+
+cols <- c("event_num",
+          "course_name",
+             "college",
+             "attendance_status",
+          "role", 
+          "modality",
+          "training_category", 
+          "theme")
+
+
+df_hdr <- df_hdr %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.))) 
+
+# recode status and department so it matches the RTDC data
+
+df_hdr <- df_hdr %>% 
+  dplyr::mutate(portfolio = case_when (is.na(college) ~ "Other portfolios",
+                                    TRUE ~ as.factor(as.character(college)))) %>% 
+  relocate(portfolio, .after = college) %>% 
+#  mutate(department = college) %>% # add this so we can run the same code in the report as we do with ienrol [or maybe not]
+  select(-college) %>% 
+  filter (course_name != "Research Town Hall with the Chief Scientist", # remove course from 2024
+          course_name != "HDR Supervision: Industry Engagement for Researchers - panel discussion", # remove duplicate w/ our data
+          course_name != "Industry Engagement for Researchers - panel discussion", # remove duplicate w/ our data
+          course_name != "HDR Supervision: Mentee Roundtable", # remove duplicate w/ our data
+          course_name != "University-Industry Partnerships: Panel Discussion") # remove duplicate w/ our data
+
+# now remove HDR supervision! 
+
+df_hdr <- df_hdr %>% 
+  mutate(course_name = (str_remove(course_name, "^HDR Supervision:\\s*"))) %>% 
+  mutate(course_name = case_when(course_name == "Dear New Postgrad: The hidden curriculum in postgraduate research" ~  
+                                   "The Hidden Curriculum in Postgraduate Research",
+                        course_name == "Dear New Postgrad: The Hidden Curriculum in Postgraduate Research" ~ 
+                          "The Hidden Curriculum in Postgraduate Research",
+                          course_name == "HDR Industry Engagement & Internships" ~ "HDR Industry Engagement and Internships",
+                         course_name == "HDR Industry Engagement" ~ "HDR Industry Engagement and Internships",
+                          course_name == "Supervising Research Students Flexibly" ~ "Supervising Students Flexibly",
+                           course_name == "Delivery of Session: How to Supervise a PPPW" ~ "Delivery of session", 
+                           course_name == "Other: 3MT Judging" ~ "3MT Judging",
+                        TRUE ~ as.character(course_name)) %>%
+  as.factor())
+  
+
+# check that we have all the data we need
+  # summarise the data based on how many courses were held and how many folks attended each of the sessions
+  # we are going to keep more variables than I normally would because we are going to use this df to join
+  # this hdr data to our spreadsheet. I don't want to have to do this again later.
+
+n_courses_hdr <- df_hdr %>% 
+  select(c(theme, team, course_name, event_num, modality, data_source, attendance_status, fan, training_category)) %>% 
+  filter(attendance_status == "Attended") %>% 
+  count(theme, team, course_name, event_num, modality, data_source, training_category) %>% 
+  rename(attended = n)
+
+
+# any course with zero attendees will not show up in n_courses. We need to manually add them back in. 
+  # Dani said (meeting 15/10/2025) that they wouldn't have run any session with 0 attendees, so 
+  # she asked that I remove those from the file. So, have only included courses with attendees. 
+  # keeping the code just in case I need to do this again. 
+
+# n_courses_all_hdr <- df_hdr %>% 
+#   select(c(theme, team, course_name, event_num, modality, data_source, attendance_status, fan)) %>% 
+# #  filter(attendance_status == "Attended") %>% 
+#   count(theme, team, course_name, event_num, modality, data_source, course_name, event_num) %>% 
+#   rename(registered = n)
+# 
+# n_courses_att_hdr <- df_hdr %>% 
+#   select(c(theme, team, course_name, event_num, modality, data_source, attendance_status, fan)) %>% 
+#   filter(attendance_status == "Attended") %>% 
+#   count(theme, team, course_name, event_num, modality, data_source, course_name, event_num) %>% 
+#   rename(attended = n)
+
+# need to find them first:
+# 
+# check <- anti_join (n_courses_all_hdr, n_courses_att_hdr, by = join_by("course_name", "event_num"))
+# 
+# add_df <- list(course_name = c("3MT Workshop/Practice Sessions", 
+#                "HDR Development Drop-in Sessions",
+#                "HDR Development Drop-in Sessions",
+#                "HDR Development Drop-in Sessions",
+#                 "HDR Development Drop-in Sessions",
+#                "HDR Development Drop-in Sessions"),
+#           event_num = c("7", "4", "14", "15", "20", "25"),
+#           theme = "HDR students", 
+#           team = "OGR",
+#           modality = "synchronous",
+#           n = "0") %>% as_tibble %>%
+#   mutate(
+#     course_name = as.factor(course_name),
+#     event_num = as.factor(event_num),
+#     attended = as.integer(n))
+# 
+# # use this df later to join to our spreadsheet data
+# n_courses_hdr <- full_join(n_courses_att_hdr,add_df) %>% 
+#   select(-n)
+# 
+# rm(add_df, check, n_courses_all_hdr, n_courses_att_hdr)
+
+```
+
+```{r clean ienrol data}
+
+df_ienrol <- df_ienrol %>%
+  select (c(course_name, event_num, first_name, last_name, fan, department, job_status, status)) %>% 
+  mutate (team = "RDS", 
+          modality = "synchronous", 
+          data_source = "ienrol", 
+          training_category = "seminar") %>% # just naming all of our sessions this to differentiate from OGR other sessions
+  rename (role = job_status)
+
+
+# turn them into factors
+
+cols <- c("course_name",
+          "event_num",
+             "department",
+             "role",
+             "status", 
+            "team")
+
+# recode status and department
+
+df_ienrol <- df_ienrol %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.))) %>% 
+  dplyr::mutate(attendance_status = case_when (status == "attended" ~ "Attended", 
+                                        status == "didnotattend" ~ "Did not attend")) %>% 
+  dplyr::mutate(portfolio = case_when (grepl("Research", department) ~ "Portfolio of the Deputy Vice-Chancellor (Research)", #recode RDS as DVC(R)
+                                    !grepl("College of", department) ~ "Other portfolios",
+                                    department == "Other" ~ "Other",
+                                    department == "Unknown" ~ "Other", 
+                                    TRUE ~ as.factor(as.character(department)))) %>% 
+  select(-status)
+
+## clean up some of the course names
+
+df_ienrol <- df_ienrol %>% 
+  mutate (course_name = case_when(
+    course_name == "Industry Engagement for Researchers -  Panel Discussion" ~ "Industry Engagement for Researchers: Panel Discussion", 
+    course_name == "University-Industry Partnerships: panel discussion" ~ "University-Industry Partnerships: Panel Discussion",
+                                  TRUE ~ as.character(course_name)))
+
+# summarise the data based on how many courses were held and how many folks attended each of the sessions
+
+n_courses_all_rds <- df_ienrol %>% 
+#  filter(attendance_status == "Attended") %>% 
+  count(course_name, event_num, data_source)
+
+n_courses_rds <- df_ienrol %>% 
+  filter(attendance_status == "Attended") %>% 
+  count(course_name, event_num, data_source)
+
+# the number of courses in ienrol don't match because some were cancelled, but they were not included
+  # in the ienrol attendance data because there were zero attendees. Nothing to do at this point. 
+
+# In 2025, we started including Mary's visits to the Colleges (this is the first year she did that) 
+  # because we are going to support this more in the future. She doesn't have attendance data 
+  # for those visits, so we have not included them in iEnrol. As such, there is a disconnect between
+  # the number of sessions captured in the spreadsheet vs. ienrol. We will report this in the report. 
+
+missing_ienrol <- 2
+
+# any course with zero attendees will not show up in n_courses. We need to manually add them back in. 
+  # 2025: we don't seem to have any courses that were not included, so skip this for now. 
+
+# add_df <- list(course_name = "Research Ethics & Biosafety Applications Hands-on Workshop", 
+#           event_num = "3", 
+#           n = "0") %>% as_tibble %>% 
+#   mutate(
+#     course_name = as.factor(course_name), 
+#     event_num = as.factor(event_num), 
+#     n = as.integer(n))
+
+# n_courses <- full_join(n_courses,add_df) 
+
+# rm(add_df)
+
+# write the clean ienrol data so I can use this later to match with workday
+write_csv(df_ienrol,
+           here::here("data", "cleaned", "cleaned_ienrol.csv"))
+
+```
+
+```{r clean spreadsheet data}
+
+df_sp <- df_sp %>% 
+   dplyr::rename(attended = no_attended, 
+                 attended_in_person = no_in_person_attendees, 
+                 attended_online = no_online_attendees, 
+                 course_name = session) %>%
+  select(c(theme, event, attended, course_name, attended_in_person, attended_online)) %>% 
+  mutate(team = "RDS", 
+         modality = "synchronous",
+         data_source = "training spreadsheet", 
+        training_category = "seminar") # just naming all of our sessions this to differentiate from OGR other sessions)
+
+
+# rename these themes in the spreadsheet (before we turn theme into a factor)
+  
+df_sp [df_sp == "FNRC"] <- "First Nations Researchers Collective"
+df_sp [df_sp == "Commerce"] <- "Post-award, Intellectual Property, and Commercialisation"
+
+
+
+## clean up some of the course names
+
+df_sp <- df_sp %>% 
+  mutate (course_name = case_when(
+    course_name == "Industry Engagement for Researchers Panel Discussion" ~ "Industry Engagement for Researchers: Panel Discussion", 
+    course_name == "University-Industry Partnerships Panel Discussion" ~ "University-Industry Partnerships: Panel Discussion",
+                                  TRUE ~ as.character(course_name)))
+# turn them into factors
+
+cols <- c("course_name",
+          "event",
+          "theme",
+          "modality",
+          "data_source",
+            "team")
+
+df_sp <- df_sp %>% 
+  dplyr::mutate(across(all_of(cols), ~factor(.)))
+
+# this number will differ from the T&D spreadsheet because we have had attendees that are not in iEnrol
+
+n_attended_sp <- sum(df_sp$attended)
+
+```
+
+```{r identify joint sessions}
+
+df_sp <- df_sp %>% 
+    dplyr::mutate(team = case_when (course_name == "Mentoring Program: Mentee Roundtable HDR Supervision" ~ "Joint", 
+                                    course_name == "Industry Engagement for Researchers: Panel Discussion" ~ "Joint", 
+                                    course_name == "University-Industry Partnerships: Panel Discussion" ~ "Joint",
+                                    TRUE ~ as.factor(as.character(team)))) 
+
+```
+
+<!-- I ONLY NEED TO RUN THIS TO COMPARE IENROL TO SPREADSHEET DATA -->
+<!-- Number of courses shown in spreadsheet = `r nrow(df_sp)` -->
+
+```{r show all spreadsheet courses, include = TRUE, eval = FALSE}
+
+#combine sessions & attendees per theme
+simple_df_sp <- df_sp %>% 
+  select (c(course_name, attended, data_source)) %>% 
+  dplyr::arrange(course_name) # put it in alphabetical order
+
+
+# make it look good
+kable(simple_df_sp, 
+      booktabs = T,
+      align = c('lcc'), 
+      caption = "Sessions recorded in spreadsheet for 2025",
+      linesep = "\\addlinespace") %>% 
+  kable_styling(latex_options = c("hold_position", "striped")) 
+
+```
+
+
+
+```{r show all ienrol courses with registrations, include = TRUE, eval = FALSE}
+
+# I use the following code to find the issues. But we don't need to run them with the full report.
+# Number of courses shown in iEnrol, with registrations = `r nrow(n_courses)`. Compare this to the number of rows in df_sp.
+
+# make it look good
+kable(n_courses_all_rds, 
+      booktabs = T,
+      align = c('lccc'), 
+      caption = "Sessions recorded in iEnrol for 2025; N shows all registrations, not only attendees",
+      linesep = "\\addlinespace") %>% 
+  kable_styling(latex_options = c("hold_position", "striped")) 
+
+```
+
+
+
+```{r show all ienrol courses with attendees, include = TRUE, eval = FALSE}
+
+#Number of courses shown in iEnrol, with attendees = `r nrow(n_courses)` 
+
+# make it look good
+kable(n_courses_rds, 
+      booktabs = T,
+      align = c('lccc'), 
+      caption = "Sessions recorded in iEnrol for 2025; N shows only attendees",
+      linesep = "\\addlinespace") %>% 
+  kable_styling(latex_options = c("hold_position", "striped")) 
+
+# compare all ienrol courses with registrations to courses with attendees
+n_compare_rds <- anti_join(n_courses_all_rds, n_courses_rds, by = c("course_name", "event_num"))
+
+# this is text that didn't work for some reason. Use it when you're first cleaning the data
+# Number of courses shown in iEnrol, with registrations = `r nrow(n_courses_all)`
+
+```
+
+```{r compare all ienrol courses with registrations to courses with attendees, incl = FALSE, eval = FALSE}
+
+# make it look good
+kable(n_compare_rds, 
+      booktabs = T,
+      align = c('lccc'), 
+      caption = "Sessions that are in the ienrol registrations without attendees",
+      linesep = "\\addlinespace") %>% 
+  kable_styling(latex_options = c("hold_position", "striped")) 
+
+```
+
+```{r compare all ienrol courses with courses in our spreadsheet, incl = FALSE, eval = FALSE}
+
+# If we have more sessions in our spreadsheet than in ienrol, use this to figure out which ones...
+
+# compare the two tibbles & see what doesn't match. 
+ienrol_vs_sp <- anti_join(n_courses_rds, df_sp, by = "course_name")
+sp_vs_ienrol <- anti_join(df_sp, n_courses_rds, by = "course_name")
+
+rm(ienrol_vs_sp, sp_vs_ienrol)
+
+```
+
+
+```{r join the spreadsheet and hdr data}
+
+# use the data we cleaned earlier to figure out how many courses were included
+  # in the hdr data
+
+sp_hdr <- full_join(n_courses_hdr, df_sp)
+
+```
+
+
+```{r join the ienrol and hdr data}
+
+ienrol_hdr <- full_join(df_hdr, df_ienrol)
+
+```
+
+
+```{r write the preprocessed data}
+
+# when done preprocessing, write the data to new files
+# row.names gets rid of the first column from the dataframe.
+# I don't know why we are keeping processed and clean folders--revisit [breadcrumb]
+
+write.csv(df_hdr, here::here("data", "processed", "hdr_processed.csv"), row.names = FALSE)
+
+write.csv(df_ienrol, here::here("data", "processed", "ienrol_processed.csv"), row.names = FALSE)
+
+write.csv(df_sp, here::here("data", "processed", "spreadsheet_processed.csv"), row.names = FALSE)
+
+write.csv(ienrol_hdr, here::here("data", "processed", "joined_ienrol_hdr_processed.csv"), row.names = FALSE)
+
+write.csv(sp_hdr, here::here("data", "processed", "joined_spreadsheet_hdr_processed.csv"), row.names = FALSE)
+
+```
