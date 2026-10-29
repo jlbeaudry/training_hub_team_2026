@@ -81,12 +81,11 @@ df_ienrol <- df_ienrol |>
    dplyr::mutate(
     event_name = case_when (
       event_name == "Grant Writing: Narrative, Articulation & Clarity" ~ "Grant Writing: Narrative, Articulation and Clarity",
-      event_name == "Co-operative Research Centre: Engagement and Development  Information Session" ~ "Co-operative Research Centre: Engagement and Development Information Session",
        event_name == "Industry Engagement for Researchers:  Panel Discussion" ~ "Industry Engagement for Researchers: Panel Discussion",
-#       event_name == "Animal researcher information session" ~ "Animal Researcher Information Session",
        event_name == "Flinders Research Fast Start: Researcher Induction Program" ~ "Research FastStart Induction Program",
-       event_name == "Building Research Leaders" ~ "Building Research Leaders for ECRs",
       event_name == "Craft a Compelling CV Workshop [Online]" ~ "Craft a Compelling CV for Academics Workshop",
+      event_name == "Researcher Mentoring Program: Mentor orientation" ~ "Researcher Mentoring Program: Mentor Orientation Session",
+      event_name == "Researcher Mentoring Program: Mentee Info Session" ~ "Researcher Mentoring Program: Mentee Information Session",
       TRUE ~ as.character(event_name))) |> 
     mutate (event_name = str_replace(event_name, "^Early Career Researcher Forum.*$",
                                          "Early Career Researcher Forum with the DVC(R)")) |>
@@ -104,22 +103,31 @@ df_ienrol <- df_ienrol |>
                                   "Flinders Research World Café")) |>
   mutate (event_name = str_replace(event_name, "^Essence of Research Leadership.*$",
                                    "Ethos Essence of Research Leadership")) |>
-  mutate (event_name = str_replace(event_name, "Ethos.*$",
+  mutate (event_name = str_replace(event_name, "^Ethos.*$",
                                    "Ethos Essence of Research Leadership")) |>
   mutate (event_name = str_replace(event_name, "^Student Research Intellectual Property Training.*$",
-                                   "Student Research Intellectual Property Training"))
+                                   "Student Research Intellectual Property Training")) |> 
+  mutate (event_name = str_replace(event_name, "^Building Research Leaders.*$", 
+                                "Building Research Leaders for ECRs")) |> 
+  mutate (event_name = str_replace(event_name, "^the Flinders University Building.*$", 
+                                   "Building Research Leaders for ECRs")) |> 
+  mutate (event_name = str_replace(event_name, "^Animal Researcher Information Session: ResearchNow.*$", 
+                                   "Animal Researcher Information Session: ResearchNow Ethics and Biosafety")) |> 
+  mutate (event_name = str_replace(event_name, "^the Flinders University Researcher.*$", 
+                                   "Researcher Mentoring Program: Closing Celebration"))
 
 
 df_codes <- df_codes |>
    dplyr::mutate(
      event_name = case_when (
     event_name == "Grant Writing: Narrative, Articulation & Clarity" ~ "Grant Writing: Narrative, Articulation and Clarity",
-#       course_name == "Animal researcher information session" ~ "Animal Researcher Information Session",
 #       course_name == "Animal Researcher information session" ~ "Animal Researcher Information Session",
     event_name == "Flinders Research Fast Start: Researcher Induction Program" ~ "Research FastStart Induction Program",
     event_name == "ARC Discovery Projects: Strategic Advice for EOIs" ~ "Strategic Advice for ARC Discovery Projects",
     event_name == "Building Research Leaders" ~ "Building Research Leaders for ECRs",
     event_name == "Connect with ARC Grants: One-on-one virtual meeting" ~ "Connect with ARC Grants: One-on-one Virtual Meeting",
+    event_name == "Researcher Mentoring Program: Mentor orientation" ~ "Researcher Mentoring Program: Mentor Orientation Session",
+    event_name == "Researcher Mentoring Program: Mentee Info Session" ~ "Researcher Mentoring Program: Mentee Information Session",
 #       course_name == "Biosafety Training – Storage and Transport of Biological Hazards" ~ "Biosafety Training: Storage and Transport of Biological Hazards",
        TRUE ~ as.character(event_name) 
     )
@@ -129,7 +137,15 @@ df_codes <- df_codes |>
   mutate (event_name = str_replace(event_name, "^Finding Funding Opportunities: Navigating.*$",
                                    "Finding Funding Opportunities: Navigating 'Research Professional'")) |>
   mutate (event_name = str_replace(event_name, "^Student Research Intellectual Property Training.*$",
-                                   "Student Research Intellectual Property Training"))
+                                   "Student Research Intellectual Property Training")) |> 
+  mutate (event_name = str_replace(event_name, "^Animal Researcher Information Session: ResearchNow.*$", 
+                                   "Animal Researcher Information Session: ResearchNow Ethics and Biosafety")) |> 
+  mutate (event_name = str_replace(event_name, "^Building Research Leaders.*$", 
+                                   "Building Research Leaders for ECRs")) |> 
+  mutate (event_name = str_replace(event_name, "^the Flinders University Building.*$", 
+                                   "Building Research Leaders for ECRs")) |> 
+  mutate (event_name = str_replace(event_name, "^the Flinders University Researcher.*$", 
+                                   "Researcher Mentoring Program: Closing Celebration"))
 
 
 # rename course_name in codes & remove the duplicates & assign new codes as needed
@@ -138,6 +154,7 @@ df_codes <- df_codes |>
   dplyr::mutate(
     course_code = case_when (
       event_name == "Industry Engagement Workshop: Persuasive Presentations" ~ "IEPP",
+      event_name == "Strategic Advice for ARC Discovery Projects" ~ "ADPIS",
       TRUE ~ as.character(course_code))) |> 
   mutate(duplicate_code = case_when (course_code == "PD22." ~ "Yes",  # we have some duplicate ids that need to be removed
                                      course_code == "PD220" ~ "Yes", 
@@ -158,11 +175,19 @@ df_codes <- df_codes |>
                                      course_code == "FFOP" ~ "Yes",
                                      course_code == "RP20" ~ "Yes",
                                      course_code == "BRL22" ~ "Yes",
+                                     course_code == "BRL18" ~ "Yes",
+                                     course_code == "ETHOS" ~ "Yes",
                                      course_code == "ETHOS" ~ "Yes",
                                      course_code == "ERL21" ~ "Yes",
                                      course_code == "DF22" ~ "Yes",
                                      course_code == "GWPE" ~ "Yes",
                                      course_code == "BAE" ~ "Yes",
+                                     course_code == "ARIS1" ~ "Yes",
+                                     course_code == "RMS18" ~ "Yes",
+                                     course_code == "CCVO" ~ "Yes",
+                                     course_code == "ETHOS" ~ "Yes",
+                                     course_code == "ERL21" ~ "Yes",
+                                     course_code == "BRL20" ~ "Yes",
                                      TRUE ~ as.character("No"))) |> 
   filter(duplicate_code == "No") |> 
   select(-duplicate_code)
@@ -300,13 +325,21 @@ df_ienrol_codes <-
 
 df_inspire <- read_excel(here::here("data", "raw", "inspire_all.xlsx"),
                          sheet = 'Attendance',
-                         #     skip = 5, #start at the header row
                          #      n_max = 250,  # last session = HDR thesis discussion group
                          .name_repair = "unique",
                          trim_ws = TRUE) %>% 
   clean_names()  |> 
-  filter (event_code != "OGR110") # duplicate data entry of same session attendees
+  filter(!event_code %in% c( # removing these as per Dani's advice re: counted elsewhere
+    "OGR293",
+    "OGR294",
+    "OGR287",
+    "OGR382",
+    "RDS235",
+    "OGR439",
+    "OGR424",
+    "OGR110")) # duplicate data entry of same session attendees
 
+  
 
 #### CLEAN THE INSPIRE DATA ####
 
@@ -350,6 +383,20 @@ df_inspire <- df_inspire |>
                                  inspire_code == "OGR423" ~ "Tiny Habits for Research Success",
                                  TRUE ~ as.character(event_name))) |> 
   filter(event_name != "HDR Online Induction")
+
+#### CHECK THAT ALL DUPLICATES ARE REMOVED FROM INSPIRE DATA ####
+
+inspire_dup <- df_inspire |>
+  count(inspire_code, fan, date, event_name) |>
+  filter(n > 1)
+
+rm (inspire_dup)
+
+# remove rows that are duplicates due to mapping to different colleges during moves.
+
+df_inspire <- df_inspire |>
+  arrange(desc(date)) |>
+  distinct(inspire_code, fan, date, .keep_all = TRUE)
 
 
 #### JOIN INSPIRE DATA TO IENROL CODE DATA ####
@@ -395,10 +442,74 @@ df_inspire_ienrol <- full_join(
   df_inspire_codes,
   by = c("event_id", "event_name", "date", "fan", "attendance_status"))
 
-# as of Oct 27, this should give us 31141 rows. 
+# as of Oct 27, this should give us 30739 rows. 
+
+
+#### RECODE THE SELECTED INSPIRE ONES TO MATCH THE REVISED INSPIRE FRAMEWORK MAPPING
+
+# fix the issues with courses that Dani flagged, but that weren't caught originally
+# because the names are different. This renames the event_id and then pulls all the 
+# data from the ienrol code, name, etc. etc. 
+
+# this is flagging that we have duplicated inspire data it seems. Asking Dani to check; we can't move forward
+
+df_inspire_ienrol2 <- df_inspire_ienrol |>
+  mutate(
+    event_id = recode(
+      event_id,
+      "OGR266" = "HDR06",
+      "OGR434" = "HDR07",
+      "OGR414" = "HDR08",
+      "OGR438" = "HDR11",
+      "OGR442" = "HDR12",
+      "OGR415" = "NIPHD",
+      "OGR444" = "OGR322",
+      "OGR383" = "SUP02",
+      "OGR100" = "PRC",
+      "OGR324" = "AKN",
+      "OGR325" = "BCX"
+    )
+  ) |>
+  left_join(
+    df_inspire_ienrol |>
+      filter(event_id %in% c(
+        "HDR06", "HDR07", "HDR08", "HDR11", "HDR12",
+        "NIPHD", "OGR322", "SUP02", "PRC", "AKN", "BCX"
+      )) |>
+      select(
+        event_id,
+        date,
+        fan,
+        event_name,
+        attendance_status
+      ),
+    by = c("event_id", "fan", "date"),
+    suffix = c("", "_correct"),
+    relationship = "many-to-one"
+  ) |>
+  mutate(
+    event_name = coalesce(event_name_correct, event_name),
+    attendance_status = coalesce(
+      attendance_status_correct,
+      attendance_status
+    )
+  ) |>
+  select(-ends_with("_correct"))
 
 # check if any have a NA for the event_id -- this flags any naming issues
 df_inspire_ienrol |> filter(is.na(event_id))
+
+# check if there are any duplicates. Lots in inspire data to sort out. 
+df_inspire_ienrol |>
+    count(event_id, fan, date) |>
+    filter(n > 1)
+
+df_inspire_ienrol3 <- df_inspire_ienrol |>
+  arrange(desc(date)) |>
+  distinct(event_id, fan, date, .keep_all = TRUE)
+
+# we have two duplicates in our data because we had two sessions on one day in the NT, with same name
+
 
 #### CREATE NEW SESSION IDS FOR JOINED TIBBLE ####
 
@@ -432,4 +543,7 @@ df_inspire_ienrol <- df_inspire_ienrol |>
 write_csv(df_inspire_ienrol,
           here::here("data", "cleaned", "cleaned_inspire_ienrol.csv"))
 
+# write the inspire data that needs to be checked. 
 
+write_csv(inspire_dup,
+          here::here("data", "cleaned", "duplicated_inspire_data.csv"))

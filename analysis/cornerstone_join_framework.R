@@ -11,10 +11,7 @@ library(lubridate)
 
 # "Subject IDs" refer to the mapping for the event_template doc; this is the mapping to our capabilities
 
-# OH, IT COULD BE THAT WE DON'T ACTUALLY NEED TO BRING IN THE JOINT SPREADSHEET DATA! 
-  # CLAIRE WILL BE MAPPING ALL OF THAT. USE HER SPREADSHEET. Can simply the code in the clean_and_join_lists
-
-# eventually I will need to change the format of the date columns, use this: 
+# if I change the format of the date columns, use this: 
 #   mutate(last_date_run = format(last_date_run, "%d/%m/%Y"))
 
 #### LOAD THE DATA ####
@@ -29,13 +26,22 @@ df_training <- read_csv(here::here("data", "cleaned", "cleaned_inspire_ienrol.cs
 
 df_ienrol_frame <- read_excel(here::here("data", "raw", "ienrol_mapping.xlsx"),
   sheet = 'Sheet1',
-#  skip = , #start at the header row
-#  n_max = 250,  # last session = HDR thesis discussion group
   .name_repair = "unique",
   trim_ws = TRUE) %>% 
   clean_names() 
 
-# fix the date information and deal with the na values [the ]
+# load the inspire mapping & descriptions
+
+df_inspire_frame <- read_excel(here::here("data", "raw", "inspire_descriptions_mapping.xlsx"),
+                              sheet = 'inspire_need_mapping',
+                              #  skip = , #start at the header row
+                              #  n_max = 250,  # last session = HDR thesis discussion group
+                              .name_repair = "unique",
+                              trim_ws = TRUE) %>% 
+  clean_names() 
+
+
+# fix the date information and deal with the na values 
 
 df_ienrol_frame <- df_ienrol_frame |> 
     mutate(
@@ -49,6 +55,13 @@ df_ienrol_frame <- df_ienrol_frame |>
       origin = "1899-12-30" # don't change the origin, this is for the excel serial numbers
     ))
 
+
+# fix the date format
+
+df_inspire_frame <- df_inspire_frame |>
+  mutate(
+    last_date_run = as.Date(last_date_run)
+  )
 
 
 #### CLEAN THE DATA ####
@@ -73,8 +86,18 @@ df_ienrol_frame <- df_ienrol_frame |>
   rename(c(event_id = course_code,
          event_name = course_name)) |> 
   select(c(event_id, event_name, framework_mapping, course_description)) |>
-  separate (framework_mapping, c('capability_num', 'capability_name'), sep = ". ", extra = "merge", fill = "left")
+  separate (framework_mapping, c('capability_num', 'capability_name'), sep = ". ", extra = "merge", fill = "left") |> 
+  mutate (source_list = "ienrol")
 
+
+df_inspire_frame <- df_inspire_frame |> 
+  rename(c(event_id = course_code,
+           event_name = course_name,
+            framework_mapping = mapping_to_framework, 
+           course_description = course_description_if_not_in_ienrol_already)) |> 
+  select(c(event_id, event_name, framework_mapping, ienrol_course_code, )) |>
+  separate (framework_mapping, c('capability_num', 'capability_name'), sep = ". ", extra = "merge", fill = "left") |> 
+  mutate (source_list = "inspire")
 
 # turn them into factors
 
@@ -87,7 +110,83 @@ df_ienrol_frame <- df_ienrol_frame %>%
   dplyr::mutate(across(all_of(cols), ~ factor(.)))
 
 
+df_inspire_frame <- df_inspire_frame %>%
+  dplyr::mutate(across(all_of(cols), ~ factor(.)))
+
+
+#### JOIN THE TWO FRAMEWORKS TOGETHER FOR IENROL & INSPIRE
+
+df_join_frame <- full_join(df_ienrol_frame, df_inspire_frame)
+
+
+# remove the courses that Dani wanted us to ignore
+
+df_join_frame <- df_join_frame |> 
+  filter(!event_id %in% c(
+    "OGR293",
+    "OGR294",
+    "OGR287",
+    "OGR382",
+    "RDS235",
+    "OGR439",
+    "OGR424"))
+
+
+# fix the issues with courses that Dani flagged, but that weren't caught originally
+  # because the names are different. This renames the event_id and then pulls all the 
+  # data from the ienrol code, name, etc. etc. 
+
+df_join_frame <- df_join_frame |>
+  mutate(
+    event_id = recode(
+      event_id,
+      "OGR266" = "HDR06",
+      "OGR434" = "HDR07",
+      "OGR414" = "HDR08",
+      "OGR438" = "HDR11",
+      "OGR442" = "HDR12",
+      "OGR415" = "NIPHD",
+      "OGR444" = "OGR322",
+      "OGR383" = "SUP02", 
+      "OGR100" = "PRC",
+      "OGR324" = "AKN",
+      "OGR325" = "BCX")
+  ) |>
+  left_join(
+    df_join_frame |>
+      filter(event_id %in% c("HDR06",
+                           "HDR07",
+                           "HDR08",
+                           "HDR11",
+                           "HDR12",
+                           "NIPHD",
+                           "OGR322",
+                           "SUP02",
+                           "PRC",
+                           "AKN",
+                           "BCX")) |>
+      select(
+        event_id,
+        event_name,
+        capability_num,
+        capability_name,
+        course_description
+      ),
+    by = "event_id",
+    suffix = c("", "_correct")
+  ) |>
+  mutate(
+    event_name = coalesce(event_name_correct, event_name),
+    capability_num = coalesce(capability_num_correct, capability_num),
+    capability_name = coalesce(capability_name_correct, capability_name),
+    course_description = coalesce(course_description_correct, course_description)
+  ) |>
+  select(-ends_with("_correct")) |> 
+  select(-ienrol_course_code)
+
+
 #### FIX THE NAMING ISSUES FOR THE FRAMEWORK ####
+
   # the training data is already fixed
   # all of the exceptions are in the 'title_case_exceptions.R' script. 
 
@@ -96,7 +195,7 @@ source(here::here("analysis", "title_case_exceptions.R"))
 
 # fix the formatting of the names
 
-df_ienrol_frame <- df_ienrol_frame |> 
+df_join_frame <- df_join_frame |> 
   mutate(event_name = str_to_title(event_name),
          event_name = str_replace_all(event_name, exceptions)) |>
   filter (event_name != "HDR Induction Seminar - Online Completion") # filter this out
@@ -104,8 +203,8 @@ df_ienrol_frame <- df_ienrol_frame |>
 
 # fix various issues with the framework names
 
-df_ienrol_frame <-
-  df_ienrol_frame |>
+df_join_frame <-
+  df_join_frame |>
   mutate (event_name = str_replace(event_name, "^Building Research Leaders.*$",
                                    "Building Research Leaders for ECRs")) |>  # remove the days from the spreadsheet
   mutate (event_name = str_replace(event_name, "^First Nations Researchers Collective Meeting",
@@ -117,43 +216,55 @@ df_ienrol_frame <-
   mutate (event_name = str_replace(event_name, "^Start Well, Stay Well.*$",
                                    "Start Well, Stay Well")) |> 
   mutate (event_name = str_replace(event_name, "^HDR Thesis Writing Discussion Group.*$",
-                                   "Thesis Writing Discussion Group")) 
+                                   "Thesis Writing Discussion Group")) |> 
+  mutate (event_name = str_replace(event_name, "^Building Research Leaders.*$", 
+                                   "Building Research Leaders for ECRs"))
+
 
 # update the framework names to match those already changed in the training data
   # I think the commented out ones are fixed in my exceptions code. Will need to confirm.
 
-df_ienrol_frame <-
-  df_ienrol_frame |>
+df_join_frame <-
+  df_join_frame |>
   mutate (
     event_name = case_when ( #old name ~ new name
       event_name == "AI for Research and Research Leadership" ~ "AI for Research and Research Leadership: Advanced Training",    # change ienrol to match spreadsheet
-      event_name == "Craft a Compelling CV Workshop [Online]" ~ "Craft a Compelling CV for Academics Workshop [Online]",
+      event_name == "Craft a Compelling CV Workshop [Online]" ~ "Craft a Compelling CV for Academics Workshop",
       event_name == "Defence Outreach Information Session" ~ "Department of Defence Outreach Information Session",
-      event_name == "DECRA Development Workshop 3 - Near Miss" ~ "DECRA Development Workshop 3: Near Miss Applicants",
+      event_name == "DECRA Development Workshop 3: Near Miss" ~ "DECRA Development Workshop 3: Near Miss Applicants",
       event_name == "First Nations Researchers Collective Meeting" ~ "First Nations Researchers Collective Session",
       event_name == "3MT Practice Sessions" ~ "3MT Practice Session",
       event_name == "HDR Development Drop-in Sessions" ~ "HDR Development Drop-in Session",
-#      event_name == "Researcher Mentoring Program - Launch" ~ "Researcher Mentoring Program: Launch",
-#      event_name == "Researcher Mentoring Program - Roundtable #1" ~ "Researcher Mentoring Program: Mentee Roundtable #1",
-#      event_name == "Researcher Mentoring Program - Roundtable #2" ~ "Researcher Mentoring Program: Mentee Roundtable #2",
-#      event_name == "Researcher Mentoring Program - Roundtable #3" ~ "Researcher Mentoring Program: Mentee Roundtable #3",
-#      event_name == "Researcher Mentoring Program - Mentor Networking Lunch" ~ "Researcher Mentoring Program: Mentor Networking Lunch",
-#      event_name == "Diving into a MRFF Application - RDS Staff Workshop" ~ "Diving into a MRFF Application: RDS Staff Workshop",
       event_name == "Media Training for Researchers with AusSMC" ~ "Media Training for Researchers with Australian Science Media Centre",
       event_name == "NHMRC Investigator Bootcamp: Metrics and Benchmarking Masterclass" ~ "NHMRC Investigator Bootcamp: Metrics and Benchmarking",
       event_name == "Learn to Program: R" ~ "Learn to Program: R Workshop",
       event_name == "Data Manipulation and Data Visualisation in R (Combined)" ~ "Data Manipulation and Data Visualisation in R",
- #     event_name == "ResearchNow Reports - RDS Training" ~ "ResearchNow Reports: RDS Training",
       event_name == "AusSMC (Science Media Centre) Interview Bootcamp" ~ "Interview Bootcamp with Australian Science Media Centre",
-#      event_name == "Biosafety Training – Storage and Transport of Biological Hazards" ~ "Biosafety Training: Storage and Transport of Biological Hazards",
-#      event_name == "Industry Engagement for Researchers -  Panel Discussion" ~ "Industry Engagement for Researchers: Panel Discussion",
+      event_name == "Industry Engagement for Researchers:  Panel Discussion" ~ "Industry Engagement for Researchers: Panel Discussion",
       event_name == "Start Well, Stay Well - Part 4" ~ "Start Well, Stay Well",
       event_name == "Flinders Research Fast Start: Researcher Induction Program" ~ "Research FastStart Induction Program",
+      event_name == "ARC Discovery Projects: Strategic Advice for EOIs" ~ "Strategic Advice for ARC Discovery Projects",
+      event_name == "Grant Writing: Narrative, Articulation & Clarity" ~ "Grant Writing: Narrative, Articulation and Clarity",
+ #     event_name == "Researcher Mentoring Program: Mentor orientation" ~ "Researcher Mentoring Program: Mentor Orientation Session",
+#      event_name == "Researcher Mentoring Program: Mentee Info Session" ~ "Researcher Mentoring Program: Mentee Information Session",
       TRUE ~ as.character(event_name)))
+
+
+#fix the names based on the codes for the mentoring program
+df_join_frame <- df_join_frame |> 
+  mutate (
+    event_name = case_when (
+      event_id == "MP231" ~ "Researcher Mentoring Program: Mentee Information Session", 
+      event_id == "MP232" ~ "Researcher Mentoring Program: Mentor Orientation Session", 
+      event_id == "MP233" ~ "Researcher Mentoring Program: Mentee Roundtable #1", 
+      event_id == "MP234" ~ "Researcher Mentoring Program: Mentee Roundtable #2", 
+      event_id == "MP235" ~ "Researcher Mentoring Program: Mentee Roundtable #3", 
+      TRUE ~ as.character(event_name)))
+
 
 # remove the duplicate codes & assign new codes as needed
 
-df_ienrol_frame <- df_ienrol_frame |> 
+df_join_frame <- df_join_frame |> 
   dplyr::mutate(
     event_id = case_when (
       event_name == "Industry Engagement Workshop: Persuasive Presentations" ~ "IEPP",
@@ -178,6 +289,15 @@ df_ienrol_frame <- df_ienrol_frame |>
                                      event_id == "RP20" ~ "Yes",
                                      event_id == "BRL20" ~ "Yes",
                                      event_id == "BRL22" ~ "Yes",
+                                     event_id == "BRL18" ~ "Yes",
+                                     event_id == "DF22" ~ "Yes",
+                                     event_id == "GWPE" ~ "Yes",
+                                     event_id == "BAE" ~ "Yes",
+                                     event_id == "ARIS1" ~ "Yes",
+                                     event_id == "CCVO" ~ "Yes",
+                                     event_id == "ETHOS" ~ "Yes",
+                                     event_id == "ERL21" ~ "Yes",
+                                     event_id == "BRL20" ~ "Yes",
                                      TRUE ~ as.character("No"))) |> 
   filter(duplicate_code == "No") |> 
   select(-c(duplicate_code))
@@ -198,8 +318,8 @@ df_ienrol_frame <- df_ienrol_frame |>
 #### JOIN THE TRAINING DATA TO THE FRAMEWORK
 
 # map the capabilities to the subject_ids from cornerstone
-df_ienrol_frame <-  
-  df_ienrol_frame |> 
+df_join_frame <-  
+  df_join_frame |> 
   mutate (subject_id = case_when (capability_name == "Conduct research with integrity" ~ "555",
                                   capability_name == "Question and evaluate knowledge critically" ~ "556", 
                                   capability_name == "Apply diverse research methods" ~ "557", 
@@ -216,13 +336,37 @@ df_ienrol_frame <-
                                     capability_name ==  "Collaborate across industry and community" ~ "568",
                                     capability_name ==  "Translate research into impact" ~"569",
                                     capability_name ==  "Innovate and apply research" ~ "570"))
-                                          
+
+
+#### FIGURE OUT IF THERE ARE DOUBLE UPS IN THE DATA                                  
+
+df_join_frame |> 
+  distinct (event_name, event_id) |> 
+  count(event_name) |> 
+  filter (n > 1)
+
+df_join_frame |> 
+  distinct (event_name, event_id) |> 
+  count(event_id) |> 
+  filter (n > 1)
+
 
 #### JOIN TRAINING DATA WITH FRAMEWORK DATA ####
 
 # join the training data with the mapping framework
 
-df_join <- left_join(df_training, df_ienrol_frame, by = c("event_id", "event_name"))
+df_join <- left_join(df_training, df_join_frame, by = c("event_id"))
+
+
+#### CLEAN UP THE JOINED NAMES ####
+
+# I can clean these names up now. The joining works, so no need to do it any earlier. #I'm sure there will be others.
+
+df_join <- df_join |>  
+  dplyr::mutate (event_name = case_when (
+              event_id == "ARC1" ~ "ARC Outreach: Special Research Initiative for Australian Society, History & Culture",
+              TRUE ~ as.character(event_name)))
+
 
 
 #### FORMAT FOR TEMPLATES ####
@@ -233,7 +377,6 @@ df_join <- left_join(df_training, df_ienrol_frame, by = c("event_id", "event_nam
 df_event_check <- df_join |> 
   select(c(event_id, event_name, subject_id, capability_name)) |> 
   unique()
-
 
 
 df_event_frame_check <- df_join |> 

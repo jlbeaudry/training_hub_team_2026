@@ -1,0 +1,15 @@
+
+
+ienrol_codes
+- missing SUP21 = HDR Supervision: CSIRO iPhD and National Industry PhD Webinar. Added Oct 22.
+- DEC-26 needs to keep being changed to text from a date
+
+mapping ienrol
+- remove the en-dash from the "Connect with ARC Grants..."
+- change FNRC title to "Summit" from "Session"
+- somehow ADPIS is missing from Strategic Advice for ARC Discovery Projects [manually fixed]
+- two sessions have an extra space in the name (I forget if it's in ienrol too), Animal Researcher Information Session & Industry Engagement for Researchers - Panel Discussion
+
+
+ienrol_all
+- 
