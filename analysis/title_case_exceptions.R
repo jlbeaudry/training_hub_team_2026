@@ -41,7 +41,7 @@ exceptions <- c(
   "nhs" = "NHS",
   "Nhs" = "NHS",
   "Cse" = "CSE",
-  "Che" = "CHE",
+  "\\bChe\\b" = "CHE",
   "\\bse\\b" = "SE",
   "Imnis" = "IMNIS",
   "Stem" = "STEM",
@@ -66,7 +66,7 @@ exceptions <- c(
   "\\b(for)\\b" = "\\b(FOR)\\b",
   "Faststart" = "FastStart",
   "Ft23" = "FT23",
-  "\\bThe\\b(?!\\s+(Conversation|Balanced|Power|Strategic|Write|Loop)\\b)" = "the", # change all the The's, except for the one with The Convo, balanced, etc.
+  "\\bThe\\b(?!\\s+(Conversation|Balanced|Power|Strategic|Write|Loop|Flinders|Future|Imposter|Language)\\b)" = "the", # change all the The's, except for the one with The Convo, balanced, etc.
  # "\\bThe\\b(?!\\s+Conversation\\b)" = "the", # change all the The's, except for the one with The Convo 
   #"\\bThe\\b(?!\\s+Balanced\\b)" = "the", # change all the The's, except for the one with The Balanced 
 #  "\\bthe\\b(?!\\s+Balanced\\b)" = "the", # change all the The's, except for the one with The Balanced 

@@ -4,6 +4,7 @@ library(here)
 library(tidyverse)
 library(janitor)
 library(readxl)
+library(writexl)
 library(lubridate)
 
 
@@ -34,8 +35,6 @@ df_ienrol_frame <- read_excel(here::here("data", "raw", "ienrol_mapping.xlsx"),
 
 df_inspire_frame <- read_excel(here::here("data", "raw", "inspire_descriptions_mapping.xlsx"),
                               sheet = 'inspire_need_mapping',
-                              #  skip = , #start at the header row
-                              #  n_max = 250,  # last session = HDR thesis discussion group
                               .name_repair = "unique",
                               trim_ws = TRUE) %>% 
   clean_names() 
@@ -93,9 +92,9 @@ df_ienrol_frame <- df_ienrol_frame |>
 df_inspire_frame <- df_inspire_frame |> 
   rename(c(event_id = course_code,
            event_name = course_name,
-            framework_mapping = mapping_to_framework, 
+           framework_mapping = mapping_to_framework, 
            course_description = course_description_if_not_in_ienrol_already)) |> 
-  select(c(event_id, event_name, framework_mapping, ienrol_course_code, )) |>
+  select(c(event_id, event_name, framework_mapping, ienrol_course_code, course_description)) |>
   separate (framework_mapping, c('capability_num', 'capability_name'), sep = ". ", extra = "merge", fill = "left") |> 
   mutate (source_list = "inspire")
 
@@ -135,6 +134,7 @@ df_join_frame <- df_join_frame |>
 # fix the issues with courses that Dani flagged, but that weren't caught originally
   # because the names are different. This renames the event_id and then pulls all the 
   # data from the ienrol code, name, etc. etc. 
+  # this creates duplicates, but I'll get rid of them later when I'm updating the names. 
 
 df_join_frame <- df_join_frame |>
   mutate(
@@ -226,6 +226,7 @@ df_join_frame <-
 
 df_join_frame <-
   df_join_frame |>
+  filter(!event_name %in% c("ARC Discovery Projects: Strategic Advice for EOIs")) |> 
   mutate (
     event_name = case_when ( #old name ~ new name
       event_name == "AI for Research and Research Leadership" ~ "AI for Research and Research Leadership: Advanced Training",    # change ienrol to match spreadsheet
@@ -262,7 +263,7 @@ df_join_frame <- df_join_frame |>
       TRUE ~ as.character(event_name)))
 
 
-# remove the duplicate codes & assign new codes as needed
+# remove the duplicate codes for the same event (with different codes)
 
 df_join_frame <- df_join_frame |> 
   dplyr::mutate(
@@ -298,21 +299,19 @@ df_join_frame <- df_join_frame |>
                                      event_id == "ETHOS" ~ "Yes",
                                      event_id == "ERL21" ~ "Yes",
                                      event_id == "BRL20" ~ "Yes",
+                                     event_id == "TESTP" ~ "Yes",
                                      TRUE ~ as.character("No"))) |> 
   filter(duplicate_code == "No") |> 
-  select(-c(duplicate_code))
+  select(-c(duplicate_code)) 
 
 # remove the mentoring ones that I've changed previously. They've been mapped to another event_id.
-df_ienrol_frame <- df_ienrol_frame |> 
+df_join_frame <- df_join_frame |> 
   filter(!event_id %in% c(
     "MP22",
     "MP221",
     "RMS19",
     "MW19"))
 
-
-# add the mapping for the framework to the "subject_id" numbers (from the Cornerstone templates) 
-# [breadcrumb] will need location numbers depending on the format (from cornerstone templates)
 
 
 #### JOIN THE TRAINING DATA TO THE FRAMEWORK
@@ -326,6 +325,7 @@ df_join_frame <-
                                   capability_name == "Analyse and visualise data" ~ "558",
                                     capability_name ==  "Manage research projects effectively" ~ "559",
                                     capability_name ==  "Operate within the institutional context" ~ "560",
+                                    capability_name ==  "Drive career development" ~ "561",
                                     capability_name ==  "Drive personal and career development" ~ "561",
                                     capability_name ==  "Grow research funding and strategy" ~ "562",
                                     capability_name ==  "Disseminate research findings" ~ "563",
@@ -338,6 +338,11 @@ df_join_frame <-
                                     capability_name ==  "Innovate and apply research" ~ "570"))
 
 
+# remove the duplicates caused when joining inspire + ienrol data
+df_join_frame <- df_join_frame |> 
+  distinct(event_id, .keep_all = TRUE)
+
+
 #### FIGURE OUT IF THERE ARE DOUBLE UPS IN THE DATA                                  
 
 df_join_frame |> 
@@ -346,19 +351,29 @@ df_join_frame |>
   filter (n > 1)
 
 df_join_frame |> 
-  distinct (event_name, event_id) |> 
   count(event_id) |> 
   filter (n > 1)
 
 
 #### JOIN TRAINING DATA WITH FRAMEWORK DATA ####
 
-# join the training data with the mapping framework
+# join the training data with the mapping framework. As of Nov 3, this gives 30530
+  # use the name from the joined framework, rather than from the training data
 
-df_join <- left_join(df_training, df_join_frame, by = c("event_id"))
+df_join <-  df_join_frame|> 
+  left_join (df_training |> select (-event_name),
+             by = "event_id")
+
+# figure out if there are any NAs -- deal with them if there are
+
+df_join |>
+  filter(if_any(
+    c(event_id, event_name, capability_num, capability_name, course_description),
+    is.na
+  ))
 
 
-#### CLEAN UP THE JOINED NAMES ####
+#### CLEAN UP FOR THE TEMPLATES ####
 
 # I can clean these names up now. The joining works, so no need to do it any earlier. #I'm sure there will be others.
 
@@ -368,285 +383,96 @@ df_join <- df_join |>
               TRUE ~ as.character(event_name)))
 
 
-
-#### FORMAT FOR TEMPLATES ####
-
-# keep just the unique courses, to upload to the event template guide
-  # for now, I'm keeping the capability name, but we will remove that once we're happy with it
-
-df_event_check <- df_join |> 
-  select(c(event_id, event_name, subject_id, capability_name)) |> 
-  unique()
-
-
-df_event_frame_check <- df_join |> 
-  select(c(event_id, event_name, subject_id, capability_name)) |> 
-  filter(!is.na(capability_name)) |> 
-distinct(event_name, .keep_all = TRUE) 
-
-
-# this will be used for the event template guide
-
-df_event_frame <- df_join |> 
-  filter(!is.na(capability_num)) |> 
-  distinct(event_name, .keep_all = TRUE) |> 
-  select(c(event_id, event_name, subject_id))
-
-
-# keep just the unique sessions, to upload to the session template guide
-
-df_session <- df_join |> 
-  select(-c(fan, attendance_status)) |> 
-  unique()
-
-### BREADCRUMB -- WHERE AM I HERE?? ###
-# I think I need to format for the other templates. 
-
- # this is old code -- bring in what I need.
-
-df_ienrol_unique <- df_ienrol_codes |> 
-  distinct(ienrol_id, event_name)
-
-df_inspire_unique <- df_inspire |> 
-  distinct (inspire_code, event_name)
-  
-df_fix_code <- full_join(
-  df_ienrol_unique,
-  df_inspire_unique,
-  by = "event_name") |> 
-  mutate(event_id = coalesce(ienrol_id, inspire_code)) |>
-  relocate(inspire_code, .after = ienrol_id) |>
-  relocate(event_id, .after = ienrol_id)
-
-# now that the coalesce works, clean this up so I can match it with other data sets again using event_name
-
-df_fix_code <- df_fix_code |> 
-  select(c(event_id, event_name))
-
-# bring together the codes with the inspire data. No need to match with ienrol because those are the 
-  # original codes, but will need to rename codes to event_id.
-
-df_inspire_codes <- left_join(
-  df_inspire, df_fix_code, by = "event_name", relationship = "many-to-many") |> 
-  select(-inspire_code)
-
-df_ienrol_codes <- df_ienrol_codes |> 
-  rename(event_id = ienrol_id)
-
-# this finally works! This is the full dataset, in terms of event_ids and event_names,
-  # but I need to add session_ids for the unique events. That will be the next step. 
-
-df_inspire_ienrol <- full_join(
-  df_ienrol_codes,
-  df_inspire_codes,
-  by = c("event_id", "event_name", "date", "fan", "attendance_status"))
-
-
-
-#### CREATE NEW SESSION IDS FOR JOINED TIBBLE ####
-
-# create a variable that combines the event_code and session_date
-
-df_inspire_ienrol <- df_inspire_ienrol %>%
-  mutate (unique_session = as.factor(paste0(event_id, " ", date)))
-
-# create a new dataframe with the unique numbers for the sessions, with each new session starting at 1
-
-df_numbered <- df_inspire_ienrol %>%
-  distinct(event_id, date) %>%
-  arrange(event_id, date) %>%
-  group_by(event_id) %>%
-  mutate(event_num = row_number())
-
-# join these tables together & move the variables to the front
-
-df_inspire_ienrol <- df_inspire_ienrol |> 
-  left_join(df_numbered, by = c("event_id", "date")) |> 
-  mutate(session_id = paste(event_id, event_num, sep = "_")) |> 
-#  relocate(event_id, .before = event_name) |> 
-  relocate(session_id, .before = event_name) |> 
-  select(-c(unique_session, event_num))
-
-
-
-#### JOIN THE COMPLETE DATA WITH THE FRAMEWORK MAPPING ####
-
-df_event <- df_inspire_ienrol |> 
-  select(c(event_id, event_name)) |> 
-  unique()
-
-
-df_event_frame <- left_join(df_event, df_frame, by = "event_name") |> 
-  filter(!is.na(capability_num)) |> 
-  distinct(event_name, .keep_all = TRUE) |> 
-  select(-c(capability_num, capability_name, format, location))
-
 # add the info needed for the templates
 
-df_ienrol_codes <- df_ienrol_codes |> 
+df_join <- df_join |> 
   mutate (vendor_provider = "Research Training Hub") |> 
-  mutate (training_contact_email = "ResearchTrainingHub@flinders.edu.au")
-
-#### SIMPLIFY TO UNIQUE EVENT NAMES ####
-
-# keep just the unique courses, to check the names of the events
-
-inspire_event <- df_inspire |> 
-  select(event_name) |> 
-  unique()
-
-# compare to the ienrol frames
-ienrol_event <- df_ienrol_pre |> 
-  select(event_name, event_id, session_id) |> 
-  unique()
+  mutate (training_contact_email = "ResearchTrainingHub@flinders.edu.au") |> 
+  mutate (timezone = "65") |>  # as per Cornerstone instructions
+  mutate (part_location = "HIST")
 
 
-# this is where I can find the mismatches between the two dataframes
+# make some of our events active so we can test that functionality in the system
 
-setdiff(ienrol_event$event_name, inspire_event$event_name)
+df_join <- df_join |> 
+  dplyr::mutate(
+    active = case_when (
+      event_id == "MP23" ~ "Active",
+      event_id == "MP231" ~ "Active",
+      event_id == "MP232" ~ "Active",
+      event_id == "MP233" ~ "Active",
+      event_id == "MP234" ~ "Active",
+      event_id == "MP235" ~ "Active",
+      event_id == "MP236" ~ "Active",
+      event_id == "MP24" ~ "Active",
+      event_id == "R101" ~ "Active",
+      event_id == "HE01" ~ "Active",
+      event_id == "3MT" ~ "Active",
+      event_id == "HDR06" ~ "Active",
+      event_id == "HDR11" ~ "Active",
+      event_id == "HDR12" ~ "Active",
+      event_id == "HDR08" ~ "Active",
+      event_id == "TWDG" ~ "Active",
+      TRUE ~ as.character("Inactive")))
+
+# change the date column to their DD/MM/YYYY format
+
+df_join <- df_join |> 
+  mutate (date = format(ymd(date), "%d/%m/%Y"))
+  
+# add the date and time column that's required for the session template
+
+df_join <- df_join |> 
+  dplyr::mutate(start_date_time = paste(date, "09:00"),
+                end_date_time = paste(date, "16:00")) 
 
 
 
-
-
-
-
-# keep just the unique sessions, to upload to the session template guide
-
-df_session <- df_ienrol_pre |> 
-  select(-c(fan, attendance_status)) |> 
-  unique()
-
+#### FORMAT FOR EVENT TEMPLATE & WRITE THE DATA ####
 
 # keep just the unique courses, to upload to the event template guide
 
-df_event_26 <- df_ienrol_26 |> 
-  select(c(event_id, event_name)) |> 
+df_event <- df_join |> 
+  select(c(event_id, event_name, active, vendor_provider, subject_id, course_description, training_contact_email)) |> 
   unique()
-
-
-# join the event info with the framework
-# All of the naming issues need to be resolved BEFORE this point
-# this will be used for the event template guide
-
-df_event_frame_26 <- left_join(df_event_26, df_frame, by = "event_name") |> 
-  filter(!is.na(capability_num)) |> 
-  distinct(event_name, .keep_all = TRUE) |> 
-  select(-c(capability_num, capability_name, format, location))
-
-
-# keep just the unique sessions, to upload to the session template guide
-
-df_session_26 <- df_ienrol_26 |> 
-  select(-c(fan, attendance_status)) |> 
-  unique()
-
-
-
-#### 
-
-
-
-#### BRING IN MAPPING DATA FOR THE FRAMEWORK ####
-
-# [breadcrumb: we will need to get the new mapping from Claire. Nothing to do yet.]
-
-
-
-
-
-#### ADD EVENT_NUMS TO INSPIRE DATA ####
-
-## [breadcrumb] add event_nums to inspire data
-
-# create a variable that combines the event_code and session_date, just to double-check
-
-df <- df %>%
-  mutate (unique_session = as.factor(paste0(event_code, " ", date)))
-
-# create a new dataframe with the unique numbers for the sessions, with each new session starting at 1
-
-df_numbered <- df %>%
-  distinct(event_code, session_date) %>%
-  arrange(event_code, session_date) %>%
-  group_by(event_code) %>%
-  mutate(event_num = row_number())
-
-
-
-#### WRITE THE PRE-2026 DATA ####
 
 # for the event template
 
-write_csv(df_event_frame_check,
-          here::here("data", "cornerstone_data", "cleaned_for_event_template_for_checking.csv"))
-
-# for the session template
-
-write_csv(df_session,
-          here::here("data", "cornerstone_data", "cleaned_for_session_template.csv"))
-
-# for the training record
-
-write_csv(df_ienrol_26_codes,
-          here::here("data", "cornerstone_data", "cleaned_for_training_record.csv"))
-
-#### SPLIT THE IENROL DATA BY DATE ####
-
-# split the data for 2026 
-
-df_ienrol_26 <- df_ienrol_codes |> 
-  filter(date > "2026-01-01")
+write_xlsx(df_event,
+           here::here("data", "cornerstone_data", "cleaned_for_event_template.xlsx"))
 
 
-#### JOIN THE 2026 TIBBLES TOGETHER ####
+
+#### FORMAT FOR SESSION TEMPLATE & WRITE THE DATA ####
 
 # keep just the unique courses, to upload to the event template guide
 
-df_event_26 <- df_ienrol_26 |> 
-  select(c(event_id, event_name)) |> 
+
+df_session <- df_join |> 
+  select(c(event_id, session_id, event_name, start_date_time, end_date_time, timezone, part_location, 
+           vendor_provider,training_contact_email)) |> 
   unique()
 
+# for the session template
 
-# join the event info with the framework
-# All of the naming issues need to be resolved BEFORE this point
-# this will be used for the event template guide
-
-df_event_frame_26 <- left_join(df_event_26, df_frame, by = "event_name") |> 
-  filter(!is.na(capability_num)) |> 
-  distinct(event_name, .keep_all = TRUE) |> 
-  select(-c(capability_num, capability_name, format, location))
+write_xlsx(df_session,
+           here::here("data", "cornerstone_data", "cleaned_for_session_template.xlsx"))
 
 
-# keep just the unique sessions, to upload to the session template guide
 
-df_session_26 <- df_ienrol_26 |> 
-  select(-c(fan, attendance_status)) |> 
+
+#### FORMAT FOR TRAINING TEMPLATE & WRITE THE DATA ####
+
+# keep just the unique courses, to upload to the event template guide
+
+
+df_training_record <- df_join |> 
+  select(c(event_id, session_id, event_name, date, fan, attendance_status, 
+           vendor_provider,training_contact_email)) |> 
   unique()
 
+# for the session template
 
-#### CHECK THE FRAMEWORK DATA ####
+write_xlsx(df_session,
+           here::here("data", "cornerstone_data", "cleaned_for_training_record.xlsx"))
 
-df_half_checked <- read_excel(here::here("data", "cornerstone_data", "event_mapping_half_checked.xlsx"),
-                              sheet = 'checked',
-                              #  skip = , #start at the header row
-                              #  n_max = 250,  # last session = HDR thesis discussion group
-                              .name_repair = "unique",
-                              trim_ws = TRUE) 
-
-# now remove these from the full event_frame_check so Dani can check the new half
-  # remove those that haven't been mapped yet (mainly inspire ones, but also some with issues to be sorted)
-
-df_second_half <- anti_join(df_event_check, df_half_checked, by = "event_id") |> 
-  filter(!is.na(subject_id))
-
-# to be checked
-
-write_csv(df_second_half,
-          here::here("data", "cornerstone_data", "cleaned_for_event_template_for_checking_part2.csv"))
-
-#### CLEAN THE ENVIRONMENT ####
-
-rm(df_event_26, df_event_frame_26, df_ienrol_26, df_session_26)
-
-# breadcrumb prompt for copilot: R. Use lubridate to rename the dates from YYYY-MM-DD to DD/MM/YYYY

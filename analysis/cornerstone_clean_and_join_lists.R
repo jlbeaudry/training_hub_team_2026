@@ -109,11 +109,11 @@ df_ienrol <- df_ienrol |>
                                    "Student Research Intellectual Property Training")) |> 
   mutate (event_name = str_replace(event_name, "^Building Research Leaders.*$", 
                                 "Building Research Leaders for ECRs")) |> 
-  mutate (event_name = str_replace(event_name, "^the Flinders University Building.*$", 
+  mutate (event_name = str_replace(event_name, "^The Flinders University Building.*$", 
                                    "Building Research Leaders for ECRs")) |> 
   mutate (event_name = str_replace(event_name, "^Animal Researcher Information Session: ResearchNow.*$", 
                                    "Animal Researcher Information Session: ResearchNow Ethics and Biosafety")) |> 
-  mutate (event_name = str_replace(event_name, "^the Flinders University Researcher.*$", 
+  mutate (event_name = str_replace(event_name, "^The Flinders University Researcher.*$", 
                                    "Researcher Mentoring Program: Closing Celebration"))
 
 
@@ -142,9 +142,9 @@ df_codes <- df_codes |>
                                    "Animal Researcher Information Session: ResearchNow Ethics and Biosafety")) |> 
   mutate (event_name = str_replace(event_name, "^Building Research Leaders.*$", 
                                    "Building Research Leaders for ECRs")) |> 
-  mutate (event_name = str_replace(event_name, "^the Flinders University Building.*$", 
+  mutate (event_name = str_replace(event_name, "^The Flinders University Building.*$", 
                                    "Building Research Leaders for ECRs")) |> 
-  mutate (event_name = str_replace(event_name, "^the Flinders University Researcher.*$", 
+  mutate (event_name = str_replace(event_name, "^The Flinders University Researcher.*$", 
                                    "Researcher Mentoring Program: Closing Celebration"))
 
 
@@ -386,17 +386,17 @@ df_inspire <- df_inspire |>
 
 #### CHECK THAT ALL DUPLICATES ARE REMOVED FROM INSPIRE DATA ####
 
-inspire_dup <- df_inspire |>
-  count(inspire_code, fan, date, event_name) |>
-  filter(n > 1)
-
-rm (inspire_dup)
-
 # remove rows that are duplicates due to mapping to different colleges during moves.
 
 df_inspire <- df_inspire |>
   arrange(desc(date)) |>
   distinct(inspire_code, fan, date, .keep_all = TRUE)
+
+
+df_inspire |>
+  count(inspire_code, fan, date, event_name) |>
+  filter(n > 1)
+
 
 
 #### JOIN INSPIRE DATA TO IENROL CODE DATA ####
@@ -442,7 +442,8 @@ df_inspire_ienrol <- full_join(
   df_inspire_codes,
   by = c("event_id", "event_name", "date", "fan", "attendance_status"))
 
-# as of Oct 27, this should give us 30739 rows. 
+
+# as of Oct 27, this should give us 30515 rows. 
 
 
 #### RECODE THE SELECTED INSPIRE ONES TO MATCH THE REVISED INSPIRE FRAMEWORK MAPPING
@@ -451,9 +452,8 @@ df_inspire_ienrol <- full_join(
 # because the names are different. This renames the event_id and then pulls all the 
 # data from the ienrol code, name, etc. etc. 
 
-# this is flagging that we have duplicated inspire data it seems. Asking Dani to check; we can't move forward
 
-df_inspire_ienrol2 <- df_inspire_ienrol |>
+df_inspire_ienrol <- df_inspire_ienrol |>
   mutate(
     event_id = recode(
       event_id,
@@ -499,16 +499,14 @@ df_inspire_ienrol2 <- df_inspire_ienrol |>
 # check if any have a NA for the event_id -- this flags any naming issues
 df_inspire_ienrol |> filter(is.na(event_id))
 
-# check if there are any duplicates. Lots in inspire data to sort out. 
+# check if there are any duplicates. We have two NT01 & NT02 sessions -- those should be duplicates
+  # because we had two sessions on one day in the NT, with same name. If needed, we could recode these
+  # but hopefully it's not necessary
+
 df_inspire_ienrol |>
     count(event_id, fan, date) |>
     filter(n > 1)
 
-df_inspire_ienrol3 <- df_inspire_ienrol |>
-  arrange(desc(date)) |>
-  distinct(event_id, fan, date, .keep_all = TRUE)
-
-# we have two duplicates in our data because we had two sessions on one day in the NT, with same name
 
 
 #### CREATE NEW SESSION IDS FOR JOINED TIBBLE ####
@@ -545,5 +543,5 @@ write_csv(df_inspire_ienrol,
 
 # write the inspire data that needs to be checked. 
 
-write_csv(inspire_dup,
-          here::here("data", "cleaned", "duplicated_inspire_data.csv"))
+# write_csv(inspire_dup,
+#           here::here("data", "cleaned", "duplicated_inspire_data.csv"))
